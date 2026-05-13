@@ -1,0 +1,10 @@
+.env
+.env.local
+*.bak
+.DS_Store
+logs/*.log
+logs/*.txt
+!logs/.gitkeep
+vendor/
+node_modules/
+.phpunit.result.cache

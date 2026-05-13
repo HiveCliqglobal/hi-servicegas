@@ -1,0 +1,505 @@
+# Hi-Service Chatbot — Visual Flow Map
+
+---
+
+## 1. The Big Picture (system architecture)
+
+```
+                                ┌────────────────────┐
+                                │      CUSTOMER      │
+                                └──────────┬─────────┘
+                                           │
+                  ┌────────────────────────┼────────────────────────┐
+                  │                        │                        │
+                  ▼                        ▼                        ▼
+        ┌──────────────────┐    ┌────────────────────┐    ┌──────────────────┐
+        │    WhatsApp      │    │   Web browser      │    │  Phone call      │
+        │ "Hi" to bot num  │    │ orders.hi-service  │    │  063 693 5532    │
+        │                  │    │   gas.co.za        │    │  (human admin)   │
+        └────────┬─────────┘    └─────────┬──────────┘    └──────────────────┘
+                 │                        │
+                 │ Meta Cloud API         │ HTTPS
+                 │ (webhook)              │
+                 │                        │
+                 ▼                        ▼
+        ╔════════════════════════════════════════════════════════════════╗
+        ║                                                                ║
+        ║          orders.hi-servicegas.co.za  (PHP 8.1 + MySQL)         ║
+        ║                                                                ║
+        ║   ┌─────────────────────────────────────────────────────────┐  ║
+        ║   │                                                         │  ║
+        ║   │   ┌──────────────┐    ┌──────────────────────────────┐  │  ║
+        ║   │   │  Webhook     │    │   Web Order Pages            │  │  ║
+        ║   │   │  Receiver    │    │   - Browse products          │  │  ║
+        ║   │   │  (WhatsApp)  │    │   - Pick address             │  │  ║
+        ║   │   └──────┬───────┘    │   - Pick slot                │  │  ║
+        ║   │          │            │   - Pay                      │  │  ║
+        ║   │          │            └─────────────┬────────────────┘  │  ║
+        ║   │          │                          │                   │  ║
+        ║   │          ▼                          ▼                   │  ║
+        ║   │   ┌─────────────────────────────────────────────────┐  │  ║
+        ║   │   │           STATE MACHINE + INTENT                │  │  ║
+        ║   │   │   (single brain, used by both inputs)           │  │  ║
+        ║   │   └────────┬────────────────────────────────────────┘  │  ║
+        ║   │            │                                            │  ║
+        ║   │            ▼                                            │  ║
+        ║   │   ┌─────────────────────────────────────────────────┐  │  ║
+        ║   │   │                 MySQL                            │  │  ║
+        ║   │   │  customers │ products │ slots │ orders │         │  │  ║
+        ║   │   │  conversations │ sessions │ payments              │  │  ║
+        ║   │   └─────────────────────────────────────────────────┘  │  ║
+        ║   │                                                         │  ║
+        ║   └─────────────────────────────────────────────────────────┘  ║
+        ║                                                                ║
+        ║          ┌──────────────────────────────────────────┐          ║
+        ║          │           ADMIN PANEL (web)              │          ║
+        ║          │  Live orders │ Conversations │ Slots │   │          ║
+        ║          │  Take-over button │ Reports │ Products  │          ║
+        ║          └──────────────────────────────────────────┘          ║
+        ║                                                                ║
+        ╚═══════════════════╤════════════════════════════════════════════╝
+                            │
+                    ┌───────┴────────┬────────────┬──────────────┐
+                    ▼                ▼            ▼              ▼
+              ┌──────────┐    ┌──────────┐  ┌─────────┐  ┌───────────────┐
+              │   Xero   │    │ PayFast  │  │  Meta   │  │     GHL       │
+              │ contacts │    │ pay link │  │ Graph   │  │ AI bot ────┐  │
+              │ invoices │    │ ITN ping │  │ (send)  │  │ Calendar   │  │
+              └──────────┘    └──────────┘  └─────────┘  │ Notify     │  │
+                                                         └────────────┘  │
+                                                                         │
+                                                          (general help) │
+                                                          ◄──────────────┘
+```
+
+---
+
+## 2. WhatsApp inbound flow — start to finish
+
+```
+   ┌────────────────────────────────────┐
+   │  Customer texts ANY message        │
+   │  to Hi-Service WhatsApp number     │
+   └────────────────┬───────────────────┘
+                    │
+                    ▼
+        Meta Cloud API → POST webhook
+                    │
+                    ▼
+   ┌──────────────────────────────────────┐
+   │  /api/webhook/whatsapp.php           │
+   │  - Verify Meta signature             │
+   │  - Log message to conversations tbl  │
+   │  - Look up phone in sessions tbl     │
+   └─────────┬────────────────────────────┘
+             │
+             ▼
+        ┌────────────────────────┐
+        │ session.mode = ?       │
+        └────────┬───────────────┘
+                 │
+   ┌─────────────┼──────────────────┬──────────────────┐
+   │             │                  │                  │
+   ▼ NULL/expired▼ ordering         ▼ general_help     ▼ user typed "menu"/"0"/"back"
+   ┌─────────┐   ┌─────────────┐   ┌─────────────┐   ┌──────────────┐
+   │  SHOW   │   │  GAS        │   │  GHL AI     │   │ Reset mode   │
+   │  MENU   │   │  STATE      │   │  BRIDGE     │   │ → show menu  │
+   │  (§3)   │   │  MACHINE    │   │  (§5)       │   │              │
+   └─────────┘   │  (§4)       │   └─────────────┘   └──────────────┘
+                 └─────────────┘
+```
+
+---
+
+## 3. The MENU (only new thing customers see)
+
+```
+┌──────────────────────────────────────────────────────┐
+│ 👋 Welcome to Hi Service Gas                         │
+│                                                      │
+│ How can we help you today?                           │
+│                                                      │
+│   *1* — 🛒 Order Gas                                 │
+│   *2* — 💬 General Help (chat with our team)         │
+│                                                      │
+│ Reply with 1 or 2.                                   │
+│                                                      │
+│ (Type Cancel anytime to end this chat)               │
+└──────────────────────┬───────────────────────────────┘
+                       │
+                       ▼
+                User replies
+                       │
+        ┌──────────────┼──────────────┐
+        │              │              │
+        ▼ "1"          ▼ "2"          ▼ anything else
+   set mode =     set mode =      re-show menu
+   "ordering"    "general_help"
+        │              │
+        ▼              ▼
+   §4 GAS FLOW   §5 GHL AI FLOW
+```
+
+---
+
+## 4. Gas ordering flow (mode = ordering)
+
+```
+                    ┌──────────────────┐
+                    │  Look up phone   │
+                    │  in Xero         │
+                    └────────┬─────────┘
+                             │
+        ┌────────────────────┼─────────────────────────┐
+        │                    │                         │
+        ▼ NEW customer       ▼ RETURNING active        ▼ ARCHIVED
+   ┌─────────────┐        ┌────────────────┐      ┌──────────────┐
+   │ Ask for     │        │ Has past       │      │ "You're      │
+   │ postal code │        │ invoice?       │      │ archived,    │
+   │ (4 digits)  │        │ ┌──────────┐   │      │ contact      │
+   └──────┬──────┘        │ │ YES   NO │   │      │ admin"  END  │
+          │               │ │  ▼     ▼ │   │      └──────────────┘
+   ┌──────┴──────┐        │ │ Show  Confirm│
+   │ In zone?    │        │ │ last  details│
+   │  Y      N   │        │ │ order Y/N    │
+   │  ▼      ▼   │        │ └──┬───────┬──┘
+   │  Get   END  │        │    │       │
+   │  details    │        │    ▼       ▼
+   │  3-line     │        │ "Repeat   "Confirm details Y/N"
+   └──────┬──────┘        │ (1) or                │
+          │               │ New (2)?"             │
+          ▼               └────┬──────────────────┘
+       Create                  │
+       Xero contact            │
+          │                    │
+          ▼                    ▼
+       Confirm details Y/N ◄───┤
+                                │
+   ┌────────────────────────────┘
+   │
+   ▼
+   ┌───────────────────────┐
+   │ SHOW PRODUCT CATALOGUE│
+   │ (pulled from Xero +   │
+   │  whitelist)           │
+   │                       │
+   │  A. 5kg LPG  R223     │
+   │  B. 9kg LPG  R385     │
+   │  C. 19kg LPG R790     │
+   │  D. 48kg LPG R1950    │
+   │                       │
+   │ "Reply: B2, D1"       │
+   └───────────┬───────────┘
+               │
+               ▼
+        Parse "B2 D1"
+               │
+               ▼
+   ┌───────────────────────┐
+   │ "To confirm:          │
+   │  • 2 x 9kg            │
+   │  • 1 x 48kg           │
+   │  Reply 1=proceed       │
+   │        2=new order"   │
+   └───────────┬───────────┘
+               │ "1"
+               ▼
+   ┌───────────────────────┐
+   │ "Address on file:     │
+   │  31 Example Rd…       │
+   │  S=same  D=different" │
+   └─────┬─────────────┬───┘
+         │ S           │ D
+         │             ▼
+         │       Ask for new address
+         │       (street, suburb, city, code)
+         │             │
+         │             ▼
+         │       Save → Xero update
+         │             │
+         │◄────────────┘
+         ▼
+   ┌─────────────────────────────────────────┐
+   │ SLOT PICKER                             │
+   │ (Google Sheet → MySQL after rebuild)    │
+   │                                         │
+   │ Next available delivery slots:          │
+   │  🌅 A — Wed 7 May, Morning              │
+   │  ☀️ B — Wed 7 May, Afternoon            │
+   │                                         │
+   │ Reply A/B or type a date 25/01/2026     │
+   └─────────────┬───────────────────────────┘
+                 │
+                 ▼
+        Parse selection (letter or date)
+                 │
+                 ▼
+   ┌─────────────────────────────────────────┐
+   │ ORDER SUMMARY                            │
+   │ Recipient: James Elliot                  │
+   │ Products: 2 x 9kg, 1 x 48kg              │
+   │ Delivery: 07/05/2026 morning             │
+   │ Address: 31 Example Rd…                  │
+   │ Total: R2,720.00                         │
+   │                                          │
+   │ Reply: P=pay  D=different order  Cancel  │
+   └─────────────┬────────────────────────────┘
+                 │ "P"
+                 ▼
+   ┌─────────────────────────────────────────┐
+   │ Generate PayFast link (PHP md5())       │
+   │                                          │
+   │ "💳 Payment Link Ready!                  │
+   │  https://payfast.co.za/eng/process?…    │
+   │  Amount: R2720                           │
+   │  Expires in 24 hours"                    │
+   └─────────────┬────────────────────────────┘
+                 │
+                 ▼
+        Customer pays in browser
+                 │
+                 ▼
+                 ───── §6 (post-payment) ─────►
+```
+
+---
+
+## 5. General help flow (mode = general_help)
+
+```
+   ┌───────────────────────────────────────┐
+   │  Customer message arrives             │
+   │  (mode already = general_help)        │
+   └────────────────┬──────────────────────┘
+                    │
+                    ▼
+   ┌───────────────────────────────────────┐
+   │  Hi-Service backend                    │
+   │  - Log message in conversations tbl   │
+   │  - Check for escape words first       │
+   │    ("menu"/"0"/"back" → reset)        │
+   └────────────────┬──────────────────────┘
+                    │ (if no escape)
+                    ▼
+   ┌───────────────────────────────────────┐
+   │  POST to GHL                           │
+   │  • Find/create contact (by phone)     │
+   │  • Add inbound message to conv        │
+   │  • Trigger custom webhook workflow    │
+   └────────────────┬──────────────────────┘
+                    │
+                    ▼
+   ╔════════════════════════════════════════════════╗
+   ║              GHL workflow                       ║
+   ║                                                 ║
+   ║   ┌─────────────────────────────────────────┐  ║
+   ║   │  Webhook trigger                        │  ║
+   ║   └────────┬────────────────────────────────┘  ║
+   ║            │                                    ║
+   ║            ▼                                    ║
+   ║   ┌─────────────────────────────────────────┐  ║
+   ║   │  Conversation AI Bot action             │  ║
+   ║   │  - Trained on company FAQ               │  ║
+   ║   │  - Can call calendar booking            │  ║
+   ║   │  - Can flag for human escalation        │  ║
+   ║   └────────┬────────────────────────────────┘  ║
+   ║            │                                    ║
+   ║   ┌────────┼──────────────────────────────┐    ║
+   ║   │        │                              │    ║
+   ║   ▼        ▼                              ▼    ║
+   ║ Reply   Book                        Escalate  ║
+   ║         calendar                    (notify    ║
+   ║         slot                         admin)    ║
+   ║   │        │                              │    ║
+   ║   └────────┴──────────┬───────────────────┘    ║
+   ║                       ▼                         ║
+   ║   ┌─────────────────────────────────────────┐  ║
+   ║   │  Outbound webhook → Hi-Service backend  │  ║
+   ║   │  POST { phone, reply_text }             │  ║
+   ║   └─────────────────────────────────────────┘  ║
+   ║                                                 ║
+   ╚═════════════════════╤═══════════════════════════╝
+                         │
+                         ▼
+   ┌───────────────────────────────────────┐
+   │  /api/webhook/ghl-outbound.php        │
+   │  - Verify GHL signature               │
+   │  - Log reply in conversations tbl     │
+   │  - Send via Meta Graph (WhatsApp)     │
+   └────────────────┬──────────────────────┘
+                    │
+                    ▼
+            Customer receives reply
+                    │
+                    ▼
+   ──── stays in general_help mode until customer types "menu" ────►
+```
+
+---
+
+## 6. Post-payment flow (PayFast → invoice)
+
+```
+   ┌───────────────────────────────────────┐
+   │  Customer completes payment           │
+   │  on PayFast checkout page             │
+   └────────────────┬──────────────────────┘
+                    │
+                    ▼
+        PayFast → POST ITN to backend
+                    │
+                    ▼
+   ┌───────────────────────────────────────┐
+   │  /api/webhook/payfast-itn.php         │
+   │  - Verify MD5 signature (PHP md5())   │
+   │  - Confirm order_total matches        │
+   │  - Lookup order in MySQL              │
+   └────────────────┬──────────────────────┘
+                    │
+                    ▼
+   ┌───────────────────────────────────────┐
+   │  Mark order = PAID in MySQL           │
+   │  Mark slot = BOOKED                   │
+   └────────────────┬──────────────────────┘
+                    │
+                    ▼
+   ┌───────────────────────────────────────┐
+   │  Xero API:                             │
+   │  - Create invoice with line items     │
+   │  - Apply payment                      │
+   │  - Download invoice PDF               │
+   └────────────────┬──────────────────────┘
+                    │
+                    ▼
+   ┌───────────────────────────────────────┐
+   │  Send WhatsApp PDF + thank-you msg    │
+   │  "🏁 All done. Invoice attached."     │
+   └────────────────┬──────────────────────┘
+                    │
+                    ▼
+   ┌───────────────────────────────────────┐
+   │  Send admin notification:              │
+   │  - WhatsApp to accounts number, AND   │
+   │  - GHL workflow → Slack/internal      │
+   └────────────────┬──────────────────────┘
+                    │
+                    ▼
+   ┌───────────────────────────────────────┐
+   │  Wait 5s, send session-end message:   │
+   │  "This session has ended. Type Hi     │
+   │   to start a new order."              │
+   └────────────────┬──────────────────────┘
+                    │
+                    ▼
+   ┌───────────────────────────────────────┐
+   │  Reset session mode → NULL            │
+   │  Next message will show menu again    │
+   └───────────────────────────────────────┘
+```
+
+---
+
+## 7. Web ordering flow (parallel to WhatsApp)
+
+```
+   ┌───────────────────────────────────────────┐
+   │  Customer visits                          │
+   │  orders.hi-servicegas.co.za               │
+   └────────────────┬──────────────────────────┘
+                    │
+                    ▼
+   ┌───────────────────────────────────────────┐
+   │  Landing page                              │
+   │  • "Order Gas Online"                     │
+   │  • "Need help? WhatsApp us"               │
+   └────────────────┬──────────────────────────┘
+                    │ click "Order"
+                    ▼
+   ┌───────────────────────────────────────────┐
+   │  Step 1 — Postal code check               │
+   │  "Enter your 4-digit code"                │
+   └────────────────┬──────────────────────────┘
+                    │ in zone
+                    ▼
+   ┌───────────────────────────────────────────┐
+   │  Step 2 — Identify yourself               │
+   │  • Phone (links to WhatsApp customer)     │
+   │  • OR Email                               │
+   │  → Look up in MySQL/Xero                  │
+   └────────────────┬──────────────────────────┘
+                    │
+                    ▼
+   ┌───────────────────────────────────────────┐
+   │  Step 3 — Browse products (same as A5)    │
+   │  • Click +/- to set quantities            │
+   │  • Live total updates                     │
+   └────────────────┬──────────────────────────┘
+                    │
+                    ▼
+   ┌───────────────────────────────────────────┐
+   │  Step 4 — Confirm address                 │
+   │  • Pre-fill from past Xero contact        │
+   │  • OR enter new                           │
+   └────────────────┬──────────────────────────┘
+                    │
+                    ▼
+   ┌───────────────────────────────────────────┐
+   │  Step 5 — Pick delivery slot              │
+   │  • Calendar grid (same MySQL slots tbl)   │
+   └────────────────┬──────────────────────────┘
+                    │
+                    ▼
+   ┌───────────────────────────────────────────┐
+   │  Step 6 — Order review + Pay              │
+   │  → PayFast checkout page                  │
+   └────────────────┬──────────────────────────┘
+                    │
+                    ▼
+                 Same as §6 (PayFast ITN → Xero invoice → WhatsApp PDF)
+```
+
+---
+
+## 8. Admin panel (live ops view)
+
+```
+   ┌─────────────────────────────────────────────────────────────────┐
+   │  orders.hi-servicegas.co.za/admin                                │
+   ├─────────────────────────────────────────────────────────────────┤
+   │                                                                 │
+   │  📊 TODAY                                                        │
+   │   ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐                           │
+   │   │ 12   │ │ R8.4k│ │  3   │ │  1   │                           │
+   │   │Orders│ │Revenue│ │Pending│ │Issue │                          │
+   │   └──────┘ └──────┘ └──────┘ └──────┘                           │
+   │                                                                 │
+   │  💬 LIVE CONVERSATIONS                                           │
+   │   ┌────────────────────────────────────────────────────────┐    │
+   │   │ +27 84 858 0000 │ ordering    │ slot picker │ 2m ago  │    │
+   │   │ +27 82 123 4567 │ general_help│ AI replying │ 30s ago │    │
+   │   │ +27 71 999 8888 │ ordering    │ paid        │ 5m ago  │    │
+   │   └────────────────────────────────────────────────────────┘    │
+   │   [click any → see chat history + "Take over" button]           │
+   │                                                                 │
+   │  🚚 SLOT CALENDAR (next 7 days)                                  │
+   │   Mon 6 May ─── 🌅 ▓▓▓▓░░ (4/6)  ☀️ ▓▓▓▓▓░ (5/6)               │
+   │   Tue 7 May ─── 🌅 ▓▓░░░░ (2/6)  ☀️ ▓░░░░░ (1/6)               │
+   │                                                                 │
+   │  📦 PRODUCTS (sync to Xero)                                      │
+   │   [Edit] [Add] [Hide]                                           │
+   │                                                                 │
+   └─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## TL;DR
+
+- **One backend** at `orders.hi-servicegas.co.za` serves WhatsApp + web
+- **One brain** (state machine + intent) handles both inputs
+- **Menu intercept** is the only new touchpoint customers see
+- **Gas flow** stays roughly the same — but in PHP/MySQL, with bug fixes + admin panel
+- **General help** = backend forwards to GHL workflow → AI bot replies → backend sends to WhatsApp
+- **Payment + invoice flow** unchanged conceptually, but PHP `md5()` instead of 100-line JS, MySQL instead of Sheets
+- **Web ordering** is the new option C — same code paths, different entry point
+- **Admin panel** for live ops + take-over

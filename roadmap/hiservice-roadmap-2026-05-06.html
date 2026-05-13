@@ -1,0 +1,784 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hi-Service Gas × HiveCliq — Chatbot Rebuild Roadmap (6 May 2026)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --red:#E60523;
+    --calla:#CD1428;
+    --hibiscus:#E63237;
+    --rose:#EB695F;
+    --gold:#FAC300;
+    --honey:#F59B00;
+    --orange:#F07300;
+    --green:#0F7A52;
+    --teal:#1F6E8C;
+    --ink:#0F0F14;
+    --black:#000000;
+    --paper:#FAF8F4;
+    --cream:#F5F0E8;
+    --line:#E5E0D8;
+    --mid:#3A3542;
+    --muted:#6B6679;
+    --fd:'Barlow Condensed', system-ui, sans-serif;
+    --fb:'Barlow', system-ui, sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:#d8d4cc}
+  body{font-family:var(--fb);color:var(--ink);font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased;}
+  .page{width:210mm;min-height:297mm;margin:18px auto;background:var(--paper);box-shadow:0 12px 40px rgba(0,0,0,.18);position:relative;overflow:hidden;page-break-after:always;}
+  .page:last-child{page-break-after:auto}
+  .pad{padding:22mm 18mm}
+  .brand-bar{position:absolute;left:0;right:0;bottom:0;height:8mm;background:var(--ink);display:flex;align-items:center;justify-content:space-between;padding:0 18mm;color:#fff;font-family:var(--fd);font-weight:600;font-size:9px;letter-spacing:.22em;text-transform:uppercase;}
+  .brand-bar .stripe{position:absolute;left:0;top:0;bottom:0;width:6mm;background:var(--red)}
+  .brand-bar .meta{display:flex;gap:18px;align-items:center}
+  .brand-bar .pn{opacity:.7}
+  .kicker{font-family:var(--fd);font-weight:600;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--red);margin:0 0 14px;}
+  h1.display{font-family:var(--fd);font-weight:900;font-size:72px;line-height:.92;letter-spacing:-.02em;text-transform:uppercase;margin:0 0 14px;color:var(--ink);}
+  h1.display em{font-style:normal;color:var(--red);display:block;}
+  h2.section{font-family:var(--fd);font-weight:900;font-size:46px;line-height:.95;letter-spacing:-.02em;text-transform:uppercase;margin:0 0 10px;color:var(--ink);}
+  h2.section em{font-style:normal;color:var(--red)}
+  h3.sub{font-family:var(--fd);font-weight:800;font-size:22px;line-height:1.05;letter-spacing:-.005em;text-transform:uppercase;margin:0 0 8px;color:var(--ink);}
+  h4.cardt{font-family:var(--fd);font-weight:800;font-size:16px;text-transform:uppercase;letter-spacing:.005em;line-height:1.15;margin:0 0 6px;color:var(--ink);}
+  p{margin:0 0 12px;color:var(--mid)}
+  p.lead{font-size:16px;line-height:1.55;color:var(--ink)}
+  strong{color:var(--ink);font-weight:600}
+  code{font-family:'SF Mono',Menlo,Consolas,monospace;font-size:11.5px;background:var(--cream);padding:1px 5px;border-radius:3px;color:var(--ink);border:1px solid var(--line)}
+
+  /* Cover */
+  .cover{background:linear-gradient(180deg,#fff 0%, var(--paper) 60%, var(--cream) 100%);position:relative;}
+  .cover .logo{height:44px;display:block;margin-bottom:60px}
+  .cover .logo svg{height:100%;width:auto;display:block}
+  .cover .lead{max-width:155mm}
+  .cover .meta{position:absolute;left:18mm;right:18mm;bottom:30mm;display:grid;grid-template-columns:repeat(4,1fr);gap:8mm;border-top:1px solid var(--line);padding-top:14px;}
+  .cover .meta .lbl{font-family:var(--fd);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--red);font-weight:600;margin-bottom:4px;}
+  .cover .meta .val{font-family:var(--fb);font-weight:600;color:var(--ink);font-size:14px;line-height:1.25}
+  .cover .meta .val small{display:block;color:var(--muted);font-weight:400;font-size:12px;margin-top:2px}
+  .cover-orb{position:absolute;right:-180px;top:-180px;width:520px;height:520px;border-radius:50%;background:radial-gradient(circle at 30% 30%, var(--rose) 0%, var(--hibiscus) 35%, var(--red) 60%, var(--calla) 100%);opacity:.18;filter:blur(2px);}
+
+  /* Stats grid */
+  .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:8mm;}
+  .stat{border:1px solid var(--line);border-radius:8px;padding:14px;background:#fff;}
+  .stat .num{font-family:var(--fd);font-weight:900;font-size:38px;line-height:1;color:var(--red);margin-bottom:4px;}
+  .stat .lbl{font-family:var(--fd);font-weight:700;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink);}
+  .stat .desc{font-size:12px;color:var(--muted);margin-top:6px}
+
+  /* Phase block */
+  .phase{margin-top:6mm;border:1px solid var(--line);border-radius:8px;background:#fff;overflow:hidden;page-break-inside:avoid;}
+  .phase-head{background:var(--ink);color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:14px;}
+  .phase-head .stag{font-family:var(--fd);font-weight:700;font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--rose);margin-bottom:4px;}
+  .phase-head h3{font-family:var(--fd);font-weight:900;text-transform:uppercase;font-size:22px;letter-spacing:-.005em;margin:0;color:#fff;line-height:1;}
+  .phase-head .when{font-family:var(--fd);font-weight:900;color:#fff;font-size:16px;letter-spacing:.05em;text-align:right;}
+  .phase-head .when small{display:block;font-weight:600;font-size:9.5px;letter-spacing:.22em;color:var(--rose);margin-bottom:2px;text-transform:uppercase;}
+  .phase-body{padding:14px 18px;}
+
+  /* Item card list */
+  .items{display:flex;flex-direction:column;gap:8px;}
+  .item-card{border-left:3px solid var(--red);padding:8px 12px 8px 14px;background:var(--cream);border-radius:0 4px 4px 0;}
+  .item-card h4.cardt{margin-bottom:4px}
+  .item-card p{font-size:12.5px;margin:0;color:var(--mid);line-height:1.5}
+  .item-card .meta-row{font-family:var(--fd);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-top:5px;}
+  .item-card .meta-row b{color:var(--ink)}
+
+  /* Tables */
+  .filetbl{width:100%;border-collapse:collapse;margin-top:6mm;font-size:12.5px;}
+  .filetbl th{background:var(--ink);color:#fff;font-family:var(--fd);font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.18em;text-align:left;padding:9px 12px;}
+  .filetbl td{padding:8px 12px;border-bottom:1px solid var(--line);color:var(--mid);vertical-align:top;}
+  .filetbl tr:last-child td{border-bottom:0}
+  .filetbl td b{color:var(--ink)}
+  .filetbl .badge{display:inline-block;font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;padding:2px 7px;border-radius:3px;}
+  .filetbl .badge.ghl{background:#0f7a52;color:#fff}
+  .filetbl .badge.app{background:var(--red);color:#fff}
+  .filetbl .badge.hyb{background:var(--gold);color:var(--ink)}
+
+  /* Pull quote */
+  .pull{border-left:4px solid var(--red);padding:14px 16px;background:var(--cream);font-family:var(--fd);font-weight:800;font-size:20px;line-height:1.15;text-transform:uppercase;letter-spacing:-.005em;color:var(--ink);margin:8mm 0 6mm;}
+  .pull em{font-style:normal;color:var(--red)}
+
+  /* Two col / three col */
+  .twocol{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:6mm;}
+  .threecol{display:grid;grid-template-columns:repeat(3,1fr);gap:6mm;margin-top:6mm;}
+
+  .panel{border:1px solid var(--line);border-radius:8px;padding:14px;background:#fff;margin-bottom:8px;}
+  .panel.inkp{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .panel.inkp h4.cardt{color:#fff}
+  .panel .item{display:flex;gap:10px;align-items:flex-start;margin:6px 0;font-size:13px;color:var(--mid)}
+  .panel .item .dot{flex:0 0 8px;height:8px;border-radius:50%;background:var(--red);margin-top:7px}
+  .panel.inkp .item{color:rgba(255,255,255,.85)}
+
+  /* Sign-off */
+  .signoff{background:var(--red);color:#fff;border-radius:10px;padding:18px 22px;margin-top:8mm;display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:center;}
+  .signoff h3{color:#fff;margin:0 0 4px;font-family:var(--fd);font-weight:900;font-size:24px;text-transform:uppercase;line-height:1;}
+  .signoff p{color:rgba(255,255,255,.9);font-size:13px;margin:0}
+  .signoff .ctaright{text-align:right;font-size:13px}
+
+  /* Recommendation block */
+  .rec{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6mm;margin-top:6mm;}
+  .rec .col{border:1px solid var(--line);border-radius:8px;padding:14px;background:#fff;}
+  .rec .col h4{font-family:var(--fd);font-weight:900;font-size:16px;text-transform:uppercase;margin:0 0 8px;color:var(--ink);letter-spacing:-.005em;}
+  .rec .col.ghl h4{color:var(--green)}
+  .rec .col.app h4{color:var(--red)}
+  .rec .col.hyb h4{color:var(--honey)}
+  .rec .col ul{margin:0;padding-left:14px;font-size:12.5px;color:var(--mid);}
+  .rec .col li{margin-bottom:4px;line-height:1.45}
+
+  /* ---------- FLOW DIAGRAM PRIMITIVES ---------- */
+
+  /* Generic flow box */
+  .fbox{
+    border:1.5px solid var(--ink);
+    background:#fff;
+    border-radius:6px;
+    padding:8px 11px;
+    font-family:var(--fb);
+    font-size:11.5px;
+    line-height:1.3;
+    color:var(--ink);
+    text-align:center;
+    position:relative;
+  }
+  .fbox .lab{
+    font-family:var(--fd);
+    font-weight:800;
+    font-size:10.5px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--red);
+    display:block;
+    margin-bottom:2px;
+  }
+  .fbox .sub{
+    font-size:10.5px;
+    color:var(--muted);
+    margin-top:2px;
+    display:block;
+  }
+  .fbox.ink{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .fbox.ink .lab{color:var(--rose)}
+  .fbox.ink .sub{color:rgba(255,255,255,.7)}
+  .fbox.red{background:var(--red);color:#fff;border-color:var(--red)}
+  .fbox.red .lab{color:rgba(255,255,255,.85)}
+  .fbox.gold{background:var(--gold);color:var(--ink);border-color:var(--gold)}
+  .fbox.gold .lab{color:var(--ink)}
+  .fbox.green{background:var(--green);color:#fff;border-color:var(--green)}
+  .fbox.green .lab{color:rgba(255,255,255,.85)}
+  .fbox.teal{background:var(--teal);color:#fff;border-color:var(--teal)}
+  .fbox.teal .lab{color:rgba(255,255,255,.85)}
+  .fbox.dim{background:var(--cream);border-color:var(--line);color:var(--mid)}
+  .fbox.diamond{
+    background:var(--gold);
+    border-color:var(--gold);
+    color:var(--ink);
+    border-radius:50%;
+    padding:14px 8px;
+    font-weight:700;
+  }
+
+  /* Arrow chunk: down arrow with optional label */
+  .arr{
+    display:flex;flex-direction:column;align-items:center;
+    margin:2px 0;
+  }
+  .arr .lbl{
+    font-family:var(--fd);
+    font-weight:700;
+    font-size:9.5px;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:1px;
+  }
+  .arr .stem{
+    width:2px;height:10px;background:var(--ink);
+  }
+  .arr .head{
+    width:0;height:0;
+    border-left:5px solid transparent;
+    border-right:5px solid transparent;
+    border-top:7px solid var(--ink);
+  }
+  .arr.short .stem{height:5px}
+  .arr.long .stem{height:18px}
+  .arr.red .stem{background:var(--red)}
+  .arr.red .head{border-top-color:var(--red)}
+  .arr.green .stem{background:var(--green)}
+  .arr.green .head{border-top-color:var(--green)}
+
+  /* Vertical flow chain */
+  .flow{display:flex;flex-direction:column;align-items:stretch;gap:0;}
+  .flow > .fbox{align-self:center;min-width:65%}
+  .flow.tight > .fbox{min-width:55%}
+
+  /* Multi-branch row */
+  .branches{display:grid;gap:6px;}
+  .branches.b2{grid-template-columns:1fr 1fr}
+  .branches.b3{grid-template-columns:1fr 1fr 1fr}
+  .branches.b4{grid-template-columns:1fr 1fr 1fr 1fr}
+  .branches > .col{display:flex;flex-direction:column;align-items:stretch;gap:0}
+  .branches > .col > .arr{align-self:center}
+  .branches > .col > .fbox{min-height:50px;display:flex;flex-direction:column;justify-content:center}
+
+  /* Architecture grid */
+  .archi{
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:#fff;
+    padding:12px 14px;
+    margin-top:6mm;
+  }
+  .archi .row{display:grid;align-items:center;gap:6px;}
+  .archi .row.entries{grid-template-columns:repeat(3,1fr);}
+  .archi .row.exits{grid-template-columns:repeat(4,1fr);margin-top:4px}
+  .archi .core{
+    border:2px solid var(--ink);
+    border-radius:8px;
+    background:linear-gradient(180deg,#fff 0%, var(--cream) 100%);
+    padding:10px 12px;margin:4px 0;
+  }
+  .archi .core .corehead{
+    font-family:var(--fd);
+    font-weight:900;
+    font-size:13px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--ink);
+    text-align:center;
+    margin-bottom:6px;
+  }
+  .archi .core .corehead em{color:var(--red);font-style:normal}
+  .archi .core .layers{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px;}
+  .archi .core .brain{
+    background:var(--red);color:#fff;
+    text-align:center;font-family:var(--fd);font-weight:800;font-size:11px;
+    letter-spacing:.12em;text-transform:uppercase;
+    padding:8px;border-radius:4px;margin:5px 0;
+  }
+  .archi .core .db{
+    background:var(--ink);color:#fff;
+    text-align:center;font-family:var(--fb);font-weight:600;font-size:11px;
+    padding:6px;border-radius:4px;
+  }
+  .archi .core .admin{
+    background:var(--gold);color:var(--ink);
+    text-align:center;font-family:var(--fd);font-weight:800;font-size:10.5px;
+    letter-spacing:.1em;text-transform:uppercase;
+    padding:6px;border-radius:4px;margin-top:4px;
+  }
+
+  /* Down arrow used inside archi */
+  .archi .arr-row{display:flex;justify-content:center;margin:3px 0}
+
+  /* Side-by-side flow comparison */
+  .duoflow{display:grid;grid-template-columns:1fr 1fr;gap:6mm;margin-top:6mm;}
+  .duoflow .lane{
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:10px 12px 14px;
+    background:#fff;
+  }
+  .duoflow .lanehead{
+    font-family:var(--fd);
+    font-weight:900;
+    font-size:14px;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:#fff;
+    background:var(--ink);
+    padding:8px 10px;
+    margin:-10px -12px 10px -12px;
+    border-radius:7px 7px 0 0;
+    text-align:center;
+  }
+  .duoflow .lane.gas .lanehead{background:var(--red)}
+  .duoflow .lane.help .lanehead{background:var(--green)}
+
+  /* Decision diamond row */
+  .diamond-row{
+    display:grid;
+    grid-template-columns:1fr;
+    margin:6px 0;
+  }
+  .diamond-row .d-wrap{
+    display:flex;justify-content:center;
+  }
+  .diamond-row .d{
+    background:var(--gold);color:var(--ink);
+    border-radius:8px;
+    padding:6px 10px;
+    font-family:var(--fd);
+    font-weight:800;
+    font-size:11px;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    text-align:center;
+    border:2px solid var(--gold);
+  }
+
+  /* Chip / pill */
+  .chip{
+    display:inline-block;
+    font-family:var(--fd);
+    font-weight:700;
+    font-size:10px;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    padding:2px 8px;
+    border-radius:11px;
+    background:var(--cream);
+    color:var(--ink);
+    border:1px solid var(--line);
+    margin:0 3px 3px 0;
+  }
+  .chip.r{background:var(--red);color:#fff;border-color:var(--red)}
+  .chip.g{background:var(--green);color:#fff;border-color:var(--green)}
+  .chip.gd{background:var(--gold);color:var(--ink);border-color:var(--gold)}
+
+  /* Day timeline */
+  .timeline{
+    display:grid;grid-template-columns:repeat(14,1fr);
+    gap:3px;margin-top:8px;
+  }
+  .timeline .day{
+    background:var(--cream);
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:6px 4px 4px;
+    text-align:center;
+    font-family:var(--fd);
+    font-size:9.5px;
+    line-height:1.1;
+    color:var(--ink);
+    font-weight:700;
+    letter-spacing:.05em;
+  }
+  .timeline .day .n{display:block;font-size:13px;font-weight:900;color:var(--red);margin-bottom:2px}
+  .timeline .day.skel{background:#FFE3E5;border-color:var(--red)}
+  .timeline .day.brain{background:#FFF1B8;border-color:var(--gold)}
+  .timeline .day.api{background:#D7EAE3;border-color:var(--green)}
+  .timeline .day.ui{background:#DCE6EE;border-color:var(--teal)}
+  .timeline .day.test{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .timeline .day.test .n{color:var(--rose)}
+
+  @page { size: A4; margin: 0; }
+  @media print{
+    html,body{background:#fff}
+    .page{margin:0;box-shadow:none;width:210mm;min-height:297mm}
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== PAGE 1: COVER ========== -->
+<section class="page cover">
+  <div class="cover-orb"></div>
+  <div class="pad">
+    <div class="logo" aria-label="HiveCliq">
+      <svg viewBox="0 0 649 129" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMid meet">
+        <g transform="matrix(1,0,0,1,-96.9568,-233.313)"><g transform="matrix(1.3596,0,0,1.3596,-124.917,-169.521)"><g><g transform="matrix(0.708211,0,0,0.708211,-46.5342,89.7536)"><g transform="matrix(1,0,0,1,0,93.293)"><path d="M512.65,258.666C514.419,249.378 520.462,244.219 529.454,244.219C538.742,244.219 545.228,249.674 546.847,258.666L512.65,258.666ZM566.16,265.74C566.16,243.777 550.975,228.446 529.159,228.446C508.079,228.446 493.19,243.481 493.19,264.856C493.19,286.085 508.668,301.413 530.339,301.413C544.786,301.413 556.726,293.896 563.505,280.63L546.258,275.913C543.31,281.368 537.413,284.758 530.485,284.758C521.2,284.758 514.27,278.861 512.65,269.427L566.011,269.427L566.16,265.74ZM455.609,271.491L440.573,230.806L421.114,230.806L445.733,299.056L465.043,299.056L489.955,230.806L470.791,230.806L455.609,271.491ZM402.843,200.881C396.799,200.881 392.375,205.302 392.375,211.346C392.375,217.243 396.799,221.667 402.843,221.667C408.737,221.667 413.161,217.243 413.161,211.495C413.161,205.302 408.886,200.881 402.843,200.881M353.623,242.304L316.328,242.304L316.328,200.734L296.133,200.734L296.133,299.056L316.328,299.056L316.328,258.812L353.623,258.812L353.623,299.056L373.817,299.056L373.817,200.734L353.623,200.734L353.623,242.304ZM393.408,299.056L412.127,299.056L412.127,230.806L393.408,230.806L393.408,299.056Z" style="fill-rule:nonzero"/></g><g transform="matrix(1,0,0,1,0,121.599)"><path d="M764.681,265.002C750.53,265.002 740.803,253.65 740.803,236.992C740.803,220.188 750.679,208.69 764.977,208.69C771.02,208.69 777.36,211.492 781.781,215.913C786.352,220.926 788.709,227.854 788.709,237.288C788.709,253.946 779.128,265.002 764.681,265.002M789.151,202.942L789.151,216.501C782.961,206.333 775.442,201.762 764.681,201.762C745.52,201.762 733.137,215.175 733.137,236.257C733.137,246.133 735.494,254.684 739.623,260.135C745.37,267.506 754.363,271.93 763.946,271.93C774.557,271.93 782.223,267.506 789.151,257.336L789.151,303.181L796.524,303.181L796.524,202.942L789.151,202.942ZM710.881,178.323C707.786,178.323 705.28,180.829 705.28,183.927C705.28,187.022 707.786,189.528 710.881,189.528C713.83,189.528 716.336,187.022 716.336,184.073C716.336,180.829 713.979,178.323 710.881,178.323M707.051,270.75L714.421,270.75L714.421,202.942L707.051,202.942L707.051,270.75ZM675.068,270.75L682.438,270.75L682.438,172.429L675.068,172.429L675.068,270.75ZM623.342,178.323C630.27,178.323 637.493,180.537 643.095,184.369C646.043,186.43 648.254,188.348 652.675,193.212L658.868,188.199C649.284,176.262 637.786,170.66 623.342,170.66C596.808,170.66 577.201,192.327 577.201,221.664C577.201,235.37 582.065,248.933 590.173,258.221C598.43,267.506 610.075,272.519 623.489,272.519C631.743,272.519 640,270.454 646.632,266.475C651.644,263.526 654.443,261.02 658.868,254.976L652.675,249.525C644.125,260.285 635.429,264.852 623.784,264.852C601.967,264.852 585.898,246.722 585.898,221.81C585.898,196.749 601.821,178.323 623.342,178.323" style="fill:rgb(230,5,35);fill-rule:nonzero"/></g></g><g transform="matrix(0.299778,0,0,0.299778,537.846,287.002)"><g transform="matrix(1,0,0,1,0,-329.175)"><path d="M144.709,471.569L160.735,499.327C164.031,505.041 170.178,508.59 176.775,508.59L208.828,508.59C215.426,508.59 221.572,505.041 224.869,499.327L240.894,471.569C244.193,465.856 244.193,458.759 240.894,453.047L224.869,425.288C221.57,419.574 215.424,416.025 208.828,416.025L176.775,416.025C170.18,416.025 164.034,419.574 160.735,425.288L144.709,453.047C141.41,458.759 141.41,465.856 144.709,471.569" style="fill:rgb(230,5,35);fill-rule:nonzero"/></g><g transform="matrix(1,0,0,1,0,-217.433)"><path d="M63.866,443.458C67.162,449.168 73.309,452.717 79.906,452.717L111.959,452.717C118.557,452.717 124.703,449.168 128,443.458L144.025,415.7C147.324,409.985 147.324,402.888 144.025,397.176L128,369.417C124.703,363.705 118.555,360.156 111.959,360.156L79.906,360.156C73.31,360.156 67.162,363.705 63.866,369.417L47.84,397.176C44.541,402.888 44.541,409.985 47.84,415.7L63.866,443.458Z" style="fill:rgb(230,5,35);fill-rule:nonzero"/></g><g transform="matrix(1,0,0,1,0,-440.915)"><path d="M63.866,555.198C67.162,560.911 73.31,564.459 79.906,564.459L111.959,564.459C118.555,564.459 124.703,560.911 128,555.198L144.025,527.44C147.324,521.726 147.324,514.628 144.025,508.916L128,481.157C124.703,475.445 118.555,471.896 111.959,471.896L79.906,471.896C73.31,471.896 67.162,475.445 63.866,481.157L47.84,508.916C44.541,514.628 44.541,521.726 47.84,527.44L63.866,555.198Z" style="fill:rgb(230,5,35);fill-rule:nonzero"/></g><g transform="matrix(1,0,0,1,0,-217.435)"><path d="M337.643,397.177L321.616,369.419C318.319,363.705 312.173,360.156 305.575,360.156L273.524,360.156C266.926,360.156 260.78,363.705 257.483,369.419L241.456,397.177C238.157,402.89 238.157,409.987 241.456,415.701L257.483,443.46C260.78,449.17 266.926,452.719 273.524,452.719L305.575,452.719C312.173,452.719 318.319,449.17 321.616,443.46L337.643,415.701C340.942,409.987 340.942,402.89 337.643,397.177" style="fill:rgb(230,5,35);fill-rule:nonzero"/></g><g transform="matrix(1,0,0,1,0,6.051)"><path d="M128,257.677C124.703,251.963 118.557,248.414 111.959,248.414L79.907,248.414C73.309,248.414 67.163,251.963 63.866,257.677L47.84,285.435C44.541,291.149 44.541,298.243 47.84,303.957L63.866,331.716C67.163,337.426 73.309,340.975 79.907,340.975L111.959,340.975C118.557,340.975 124.703,337.426 128,331.716L144.026,303.957C147.324,298.243 147.324,291.149 144.026,285.435L128,257.677Z" style="fill:rgb(230,5,35);fill-rule:nonzero"/></g><g transform="matrix(1,0,0,1,0,-105.691)"><path d="M224.869,313.546C221.57,307.832 215.424,304.283 208.828,304.283L176.775,304.283C170.18,304.283 164.034,307.832 160.735,313.546L144.709,341.305C141.41,347.019 141.41,354.112 144.709,359.827L160.735,387.585C164.034,393.299 170.18,396.848 176.775,396.848L208.828,396.848C215.424,396.848 221.57,393.299 224.869,387.585L240.894,359.827C244.193,354.112 244.193,347.019 240.894,341.305L224.869,313.546Z" style="fill:rgb(230,5,35);fill-rule:nonzero"/></g></g></g></g></g>
+      </svg>
+    </div>
+
+    <p class="kicker">Chatbot rebuild roadmap · 6 May 2026</p>
+    <h1 class="display">Hi-Service Gas<br><em>chatbot rebuild.</em></h1>
+    <p class="lead">A 14-day plan to retire the fragile n8n WhatsApp bot and replace it with a custom PHP backend serving <strong>WhatsApp + a public web shop at orders.hi-servicegas.co.za</strong>, with a GHL AI bot bridge for general questions, calendar booking and admin escalation. Single brain, two channels, one admin panel.</p>
+
+    <div class="summary">
+      <div class="stat"><div class="num">14d</div><div class="lbl">Build window</div><div class="desc">Phased; live cutover at day 14.</div></div>
+      <div class="stat"><div class="num">122→0</div><div class="lbl">n8n nodes retired</div><div class="desc">Replaced by clean PHP + MySQL.</div></div>
+      <div class="stat"><div class="num">2</div><div class="lbl">Sales channels</div><div class="desc">WhatsApp + new web ordering shop.</div></div>
+      <div class="stat"><div class="num">Hybrid</div><div class="lbl">Recommended</div><div class="desc">PHP owns ordering · GHL owns AI.</div></div>
+    </div>
+
+    <div class="meta">
+      <div><div class="lbl">Prepared for</div><div class="val">Hi-Service Gas<small>LPG door-to-door · Helderberg + surrounds</small></div></div>
+      <div><div class="lbl">Prepared by</div><div class="val">HiveCliq<small>Shawn Lochner</small></div></div>
+      <div><div class="lbl">Source</div><div class="val">Existing n8n flow audit<small>122-node main + 23-node PayFast sub</small></div></div>
+      <div><div class="lbl">Status</div><div class="val">Discovery — for review<small>Awaiting credentials + go-ahead</small></div></div>
+    </div>
+  </div>
+  <div class="brand-bar"><div class="stripe"></div><div>HIVECLIQ × HI-SERVICE · CHATBOT REBUILD ROADMAP</div><div class="meta"><span>www.hivecliq.online</span><span class="pn">01 / 05</span></div></div>
+</section>
+
+
+<!-- ========== PAGE 2: DISCOVERY ========== -->
+<section class="page">
+  <div class="pad">
+    <p class="kicker">Discovery · what we found</p>
+    <h2 class="section">From fragile n8n to <em>production stack.</em></h2>
+    <p class="lead">A full audit of the live n8n bot — every state, every code node, every external call — surfaced real bugs, hardcoded secrets, and architectural fragility. The brief is bigger than fixing the bot: it's putting the whole order pipeline on infrastructure Hi-Service can rely on, and adding a web ordering channel + AI customer-service layer at the same time.</p>
+
+    <div class="threecol">
+      <div class="panel">
+        <h4 class="cardt">The bot today</h4>
+        <p style="font-size:12.5px;margin-bottom:6px"><strong>122 n8n nodes</strong> on a third-party server, 38 hand-written Code nodes, hand-rolled MD5 in JavaScript, daily session resets at midnight, Google Sheets used as a slot-booking database (race conditions).</p>
+        <p style="font-size:12.5px"><strong>WhatsApp-only.</strong> No web shop. No admin panel. No conversation log. Customers without WhatsApp can't order.</p>
+      </div>
+      <div class="panel">
+        <h4 class="cardt">The system we're building</h4>
+        <p style="font-size:12.5px;margin-bottom:6px">Single PHP/MySQL backend on cPanel — same proven stack as Westpeak, Praxis and N24x4. Both WhatsApp and the new <strong>orders.hi-servicegas.co.za</strong> web shop run off it.</p>
+        <p style="font-size:12.5px">A GHL AI bot handles general help mode, calendar bookings, and admin escalation. The PHP backend handles every order.</p>
+      </div>
+      <div class="panel inkp">
+        <h4 class="cardt">The 2026 thesis</h4>
+        <p style="font-size:12.5px;color:rgba(255,255,255,.85);margin-bottom:6px">Stop fighting n8n. Stop fearing midnight resets. Open a web ordering channel. Give the team an admin panel that shows live orders + live chats.</p>
+        <p style="font-size:12.5px;color:rgba(255,255,255,.85)">Use GHL AI as a 24/7 customer-service rep so Lele's team only handles real escalations.</p>
+      </div>
+    </div>
+
+    <h3 class="sub" style="margin-top:8mm">Critical findings from the n8n audit</h3>
+    <div class="items">
+      <div class="item-card"><h4 class="cardt">1 · PayFast still pointed at sandbox</h4><p>Live URL hardcoded as <code>sandbox.payfast.co.za</code>. If this branch fires, no real money moves. Sandbox merchant ID, key and passphrase are also embedded in two Code nodes, replicated in the PayFast sub-workflow.</p><div class="meta-row"><b>Severity:</b> Blocker for any cutover.</div></div>
+      <div class="item-card"><h4 class="cardt">2 · Duplicate state definition kills the new-customer branch</h4><p>The state-machine controller defines <code>confirm_new_details</code> twice. The second definition overwrites the first. Brand-new customers can land in a dead branch — almost certainly the source of the production "issues".</p></div>
+      <div class="item-card"><h4 class="cardt">3 · Daily session reset at midnight</h4><p>Session key is <code>phone:yyyy-MM-dd</code>. A customer who starts an order at 23:55 loses all state at 00:00 — order details, address, slot selection, gone. Silent UX failure.</p></div>
+      <div class="item-card"><h4 class="cardt">4 · Google Sheets as a scheduling database</h4><p>Slot bookings read/write across 9 separate Sheets nodes. Two simultaneous bookings can both succeed against the same slot. No atomic locking. No audit trail.</p></div>
+      <div class="item-card"><h4 class="cardt">5 · Pure regex intent detection</h4><p>Inputs like "1.", "yes please", "i'd like to order" all fall through to "unclear". Zero AI fallback. Customers who deviate from the script get stuck.</p></div>
+      <div class="item-card"><h4 class="cardt">6 · No global error handler · no conversation log</h4><p>If any of the 38 Code nodes throws, execution dies and the customer never gets a reply. Past messages are not retained anywhere queryable — operators can't debug "what did this customer say at 3pm".</p></div>
+    </div>
+
+  </div>
+  <div class="brand-bar"><div class="stripe"></div><div>DISCOVERY · WHAT WE FOUND</div><div class="meta"><span>shawn@hivecliq.online</span><span class="pn">02 / 05</span></div></div>
+</section>
+
+
+<!-- ========== PAGE 3: ARCHITECTURE + MENU INTERCEPT ========== -->
+<section class="page">
+  <div class="pad">
+    <p class="kicker">Visual · system architecture</p>
+    <h2 class="section">One backend. <em>Two channels.</em></h2>
+    <p>Customers reach Hi-Service through WhatsApp or the new web shop. Both inputs hit a single PHP brain that owns state, talks to Xero, PayFast, Meta and GHL, and renders an admin panel for the team.</p>
+
+    <div class="archi">
+      <div class="row entries">
+        <div class="fbox"><span class="lab">Channel A</span>WhatsApp<span class="sub">"Hi" to bot number</span></div>
+        <div class="fbox"><span class="lab">Channel B</span>Web browser<span class="sub">orders.hi-servicegas.co.za</span></div>
+        <div class="fbox dim"><span class="lab">Channel C</span>Phone call<span class="sub">063 693 5532 · human admin</span></div>
+      </div>
+
+      <div class="arr-row"><div class="arr"><div class="stem"></div><div class="head"></div></div></div>
+
+      <div class="core">
+        <div class="corehead">orders.hi-servicegas.co.za <em>· PHP 8.1 + MySQL</em></div>
+        <div class="layers">
+          <div class="fbox"><span class="lab">In</span>WhatsApp webhook<span class="sub">/api/webhook/whatsapp.php</span></div>
+          <div class="fbox"><span class="lab">In</span>Web order pages<span class="sub">browse · address · slot · pay</span></div>
+        </div>
+        <div class="brain">State machine + intent · single brain</div>
+        <div class="db">MySQL — customers · products · slots · orders · conversations · sessions</div>
+        <div class="admin">Admin panel · orders · conversations · take-over</div>
+      </div>
+
+      <div class="arr-row"><div class="arr"><div class="stem"></div><div class="head"></div></div></div>
+
+      <div class="row exits">
+        <div class="fbox"><span class="lab">Out</span>Xero<span class="sub">contacts · invoices · PDF</span></div>
+        <div class="fbox red"><span class="lab">Out</span>PayFast<span class="sub">pay link · ITN verify</span></div>
+        <div class="fbox"><span class="lab">Out</span>Meta Graph<span class="sub">WhatsApp send</span></div>
+        <div class="fbox green"><span class="lab">Out</span>GHL<span class="sub">AI bot · calendar · notify</span></div>
+      </div>
+    </div>
+
+    <h3 class="sub" style="margin-top:8mm">The only new thing customers see — a menu intercept</h3>
+    <p style="margin-bottom:5mm">Every fresh chat now starts with one question. The customer's reply routes them down one of two flows. Escape word <code>menu</code> resets at any time.</p>
+
+    <div class="archi" style="background:#fff">
+      <div class="flow tight">
+        <div class="fbox ink" style="min-width:60%"><span class="lab">Inbound</span>WhatsApp message arrives</div>
+        <div class="arr"><div class="stem"></div><div class="head"></div></div>
+        <div class="fbox" style="min-width:60%"><span class="lab">Backend</span>Look up <code>session.mode</code></div>
+        <div class="arr"><div class="stem"></div><div class="head"></div></div>
+        <div class="diamond-row"><div class="d-wrap"><div class="d">session.mode = ?</div></div></div>
+
+        <div class="branches b4" style="margin-top:8px">
+          <div class="col">
+            <div class="arr"><div class="lbl">null / new</div><div class="stem"></div><div class="head"></div></div>
+            <div class="fbox gold"><span class="lab">Show</span>Menu</div>
+          </div>
+          <div class="col">
+            <div class="arr red"><div class="lbl">ordering</div><div class="stem"></div><div class="head"></div></div>
+            <div class="fbox red"><span class="lab">Run</span>Gas flow</div>
+          </div>
+          <div class="col">
+            <div class="arr green"><div class="lbl">general help</div><div class="stem"></div><div class="head"></div></div>
+            <div class="fbox green"><span class="lab">Bridge</span>GHL AI</div>
+          </div>
+          <div class="col">
+            <div class="arr"><div class="lbl">"menu" / "0"</div><div class="stem"></div><div class="head"></div></div>
+            <div class="fbox dim"><span class="lab">Reset</span>→ menu</div>
+          </div>
+        </div>
+
+        <div class="arr long" style="margin-top:8px"><div class="stem"></div><div class="head"></div></div>
+
+        <div class="fbox" style="min-width:75%;text-align:left">
+          <span class="lab">Menu shown to customer</span>
+          <div style="font-family:var(--fd);font-size:13px;font-weight:700;color:var(--ink);margin:4px 0">👋 Welcome to Hi-Service Gas — How can we help you today?</div>
+          <div><span class="chip r">1 · 🛒 Order Gas</span><span class="chip g">2 · 💬 General Help</span><span class="chip">Cancel · end chat</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div class="brand-bar"><div class="stripe"></div><div>VISUAL · ARCHITECTURE · MENU INTERCEPT</div><div class="meta"><span>www.hivecliq.online</span><span class="pn">03 / 05</span></div></div>
+</section>
+
+
+<!-- ========== PAGE 4: BOTH FLOWS SIDE BY SIDE ========== -->
+<section class="page">
+  <div class="pad">
+    <p class="kicker">Visual · both flows side by side</p>
+    <h2 class="section">Order gas. <em>Or just chat.</em></h2>
+    <p>Same backend, same WhatsApp number, two completely different customer journeys. Gas ordering is deterministic — every screen scripted. General help is conversational — GHL AI bot replies, books calendar, escalates.</p>
+
+    <div class="duoflow">
+      <!-- ===== GAS ORDERING LANE ===== -->
+      <div class="lane gas">
+        <div class="lanehead">Lane A · Gas ordering</div>
+        <div class="flow tight">
+          <div class="fbox red"><span class="lab">Step 1</span>Customer picks "Order Gas"</div>
+          <div class="arr red"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox"><span class="lab">Step 2</span>Lookup phone in Xero<span class="sub">new · returning · archived</span></div>
+          <div class="arr"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox"><span class="lab">Step 3</span>Postal code OR confirm details<span class="sub">in zone · out of zone</span></div>
+          <div class="arr"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox"><span class="lab">Step 4</span>Show product catalogue<span class="sub">"B2 D1" — letter + qty</span></div>
+          <div class="arr"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox"><span class="lab">Step 5</span>Confirm order summary<span class="sub">proceed · different · cancel</span></div>
+          <div class="arr"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox"><span class="lab">Step 6</span>Address: same / different<span class="sub">S · D · or new address</span></div>
+          <div class="arr"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox"><span class="lab">Step 7</span>Pick delivery slot<span class="sub">A · B · or custom date</span></div>
+          <div class="arr"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox"><span class="lab">Step 8</span>Final summary + total<span class="sub">P to pay · D for new · Cancel</span></div>
+          <div class="arr red"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox red"><span class="lab">Step 9</span>PayFast link<span class="sub">customer pays in browser</span></div>
+          <div class="arr"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox ink"><span class="lab">Webhook</span>PayFast ITN verified<span class="sub">signature · amount</span></div>
+          <div class="arr"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox"><span class="lab">Step 10</span>Xero invoice + PDF<span class="sub">create · attach payment · download</span></div>
+          <div class="arr"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox green"><span class="lab">Done</span>Send PDF + thanks · close session</div>
+        </div>
+      </div>
+
+      <!-- ===== GENERAL HELP LANE ===== -->
+      <div class="lane help">
+        <div class="lanehead">Lane B · General help (GHL AI)</div>
+        <div class="flow tight">
+          <div class="fbox green"><span class="lab">Step 1</span>Customer picks "General Help"</div>
+          <div class="arr green"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox"><span class="lab">Step 2</span>Set <code>session.mode</code> = general_help<span class="sub">all subsequent messages bridged</span></div>
+          <div class="arr"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox"><span class="lab">Step 3</span>Forward inbound to GHL<span class="sub">find/create contact · log msg</span></div>
+          <div class="arr"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox ink"><span class="lab">GHL workflow</span>Inbound webhook trigger</div>
+          <div class="arr"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox green"><span class="lab">GHL</span>AI bot action<span class="sub">trained on company FAQ</span></div>
+          <div class="arr"><div class="stem"></div><div class="head"></div></div>
+          <div class="diamond-row"><div class="d-wrap"><div class="d">AI decision</div></div></div>
+
+          <div class="branches b3" style="margin-top:8px">
+            <div class="col">
+              <div class="arr"><div class="lbl">answer</div><div class="stem"></div><div class="head"></div></div>
+              <div class="fbox"><span class="lab">A</span>FAQ reply</div>
+            </div>
+            <div class="col">
+              <div class="arr"><div class="lbl">book</div><div class="stem"></div><div class="head"></div></div>
+              <div class="fbox gold"><span class="lab">B</span>Calendar slot</div>
+            </div>
+            <div class="col">
+              <div class="arr red"><div class="lbl">escalate</div><div class="stem"></div><div class="head"></div></div>
+              <div class="fbox red"><span class="lab">C</span>Notify admin</div>
+            </div>
+          </div>
+
+          <div class="arr long" style="margin-top:8px"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox"><span class="lab">GHL out</span>Send outbound webhook<span class="sub">→ Hi-Service backend</span></div>
+          <div class="arr"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox ink"><span class="lab">Backend</span>/api/webhook/ghl-outbound.php<span class="sub">verify · log · forward</span></div>
+          <div class="arr"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox"><span class="lab">Out</span>Send via Meta Graph<span class="sub">WhatsApp text reply</span></div>
+          <div class="arr green"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox green"><span class="lab">Loop</span>Customer receives reply · stays in mode</div>
+          <div class="arr"><div class="stem"></div><div class="head"></div></div>
+          <div class="fbox dim"><span class="lab">Escape</span>"menu" / "0" → reset to menu</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pull" style="margin-top:6mm">PHP owns the order. <em>GHL owns the conversation.</em></div>
+
+  </div>
+  <div class="brand-bar"><div class="stripe"></div><div>VISUAL · GAS FLOW · GENERAL HELP FLOW</div><div class="meta"><span>shawn@hivecliq.online</span><span class="pn">04 / 05</span></div></div>
+</section>
+
+
+<!-- ========== PAGE 5: BUILD PLAN + RECOMMENDATION + SIGN-OFF ========== -->
+<section class="page">
+  <div class="pad">
+    <p class="kicker">Roadmap · 14-day build</p>
+    <h2 class="section">From skeleton to <em>cutover.</em></h2>
+    <p>The build runs in five stages. Each stage stands alone, each stage ends with something you can demo. The current n8n bot stays running on imappliedseo.com throughout — the cutover happens on day 14 by switching the Meta WhatsApp webhook URL.</p>
+
+    <div class="timeline">
+      <div class="day skel"><span class="n">1</span>Skeleton</div>
+      <div class="day skel"><span class="n">2</span>DB</div>
+      <div class="day brain"><span class="n">3</span>FSM</div>
+      <div class="day brain"><span class="n">4</span>FSM</div>
+      <div class="day api"><span class="n">5</span>Meta</div>
+      <div class="day api"><span class="n">6</span>Xero</div>
+      <div class="day api"><span class="n">7</span>PayFast</div>
+      <div class="day api"><span class="n">8</span>GHL</div>
+      <div class="day ui"><span class="n">9</span>Web UI</div>
+      <div class="day ui"><span class="n">10</span>Web UI</div>
+      <div class="day ui"><span class="n">11</span>Admin</div>
+      <div class="day ui"><span class="n">12</span>Admin</div>
+      <div class="day test"><span class="n">13</span>Test</div>
+      <div class="day test"><span class="n">14</span>Cut over</div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head">
+        <div><div class="stag">Stage 1 · backend skeleton</div><h3>cPanel · DB schema · auth · admin shell</h3></div>
+        <div class="when"><small>Days</small>1 – 2</div>
+      </div>
+      <div class="phase-body">
+        <div class="items">
+          <div class="item-card"><h4 class="cardt">Subdomain + DB + auth</h4><p>Provision <code>orders.hi-servicegas.co.za</code> on the hivecliqapps cPanel. AutoSSL. New MySQL DB <code>hiservicegas_main</code>. Schema for customers, products, slots, orders, order_lines, conversations, sessions, payments. Branded login page + session auth.</p><div class="meta-row"><b>Demo:</b> log in to a working empty admin panel.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head">
+        <div><div class="stag">Stage 2 · the brain</div><h3>State machine · intent detection · PHPUnit tests</h3></div>
+        <div class="when"><small>Days</small>3 – 4</div>
+      </div>
+      <div class="phase-body">
+        <div class="items">
+          <div class="item-card"><h4 class="cardt">Port FSM from JS to PHP — fix the bugs</h4><p>Translate the existing 13-state machine into a clean PHP class. Fix the duplicate <code>confirm_new_details</code> definition. Replace daily session reset with a 24-hour rolling expiry. Optional Claude AI fallback when regex misses an intent. Full PHPUnit test coverage on every state transition.</p><div class="meta-row"><b>Demo:</b> run unit tests · simulate any conversation in a CLI.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head">
+        <div><div class="stag">Stage 3 · external integrations</div><h3>Meta Graph · Xero · PayFast · GHL</h3></div>
+        <div class="when"><small>Days</small>5 – 8</div>
+      </div>
+      <div class="phase-body">
+        <div class="items">
+          <div class="item-card"><h4 class="cardt">Day 5 — Meta WhatsApp Cloud API gateway</h4><p>Webhook receiver with Meta signature verification. Send helper using Graph API. Round-trip tested with a real test number.</p></div>
+          <div class="item-card"><h4 class="cardt">Day 6 — Xero contacts + invoices</h4><p>OAuth refresh token flow. Contact create/update/find. Invoice create with line items. Invoice PDF download.</p></div>
+          <div class="item-card"><h4 class="cardt">Day 7 — PayFast pay link + ITN</h4><p>PHP <code>md5()</code> signature (one line, replaces 100 lines of JS). Pay-link generator. ITN webhook with signature verify and amount cross-check.</p><div class="meta-row"><b>Switch:</b> sandbox → live merchant credentials.</div></div>
+          <div class="item-card"><h4 class="cardt">Day 8 — GHL bridge</h4><p>Forward general-help messages into GHL Conversations API. Receive outbound webhook from GHL workflow (AI reply). Send back to WhatsApp.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head">
+        <div><div class="stag">Stage 4 · web shop + admin</div><h3>orders.hi-servicegas.co.za · live ops dashboard</h3></div>
+        <div class="when"><small>Days</small>9 – 12</div>
+      </div>
+      <div class="phase-body">
+        <div class="items">
+          <div class="item-card"><h4 class="cardt">Days 9–10 — public web ordering shop</h4><p>Six-step funnel: postal-code check · identify (phone/email) · browse products · confirm address · pick slot · pay. Same MySQL slots table as WhatsApp — no double bookings. Mobile-first responsive design on Hi-Service brand.</p></div>
+          <div class="item-card"><h4 class="cardt">Days 11–12 — admin panel</h4><p>Live orders board with status. Live conversations table with "take over" button per chat. Slot calendar editor. Product catalogue editor (replaces the Google Sheet whitelist). Reports: revenue, slot fill rate, conversation outcomes.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head">
+        <div><div class="stag">Stage 5 · cutover</div><h3>End-to-end test · go live · old n8n stays standby</h3></div>
+        <div class="when"><small>Days</small>13 – 14</div>
+      </div>
+      <div class="phase-body">
+        <div class="items">
+          <div class="item-card"><h4 class="cardt">Day 13 — full dress rehearsal</h4><p>Real WhatsApp number → real PayFast → real Xero → real PDF delivered. Verify both lanes (gas + general help) end-to-end. Run a load test on slot booking concurrency.</p></div>
+          <div class="item-card"><h4 class="cardt">Day 14 — flip the webhook</h4><p>Switch the Meta WhatsApp webhook URL from n8n.imappliedseo.com to the new <code>orders.hi-servicegas.co.za/api/webhook/whatsapp.php</code>. Same for PayFast ITN. Old n8n bot stays running on standby for 7 days as rollback. Decommission once stable.</p><div class="meta-row"><b>Outcome:</b> live cutover with same-day rollback option.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="section" style="margin-top:10mm">A hybrid. <em>Not a choice.</em></h2>
+    <p class="lead">PHP for the parts where deterministic order processing matters. GHL for the parts where conversational AI and CRM matter. Same proven pattern as Westpeak (PHP + GHL) and HiveCliq Command Center (Next.js + Supabase + GHL).</p>
+
+    <div class="rec">
+      <div class="col app">
+        <h4>PHP backend owns</h4>
+        <ul>
+          <li>WhatsApp webhook + state machine</li>
+          <li>Web ordering shop (orders.hi-servicegas)</li>
+          <li>MySQL: orders · slots · conversations</li>
+          <li>Xero invoice creation</li>
+          <li>PayFast pay link + ITN verification</li>
+          <li>Admin panel + reports</li>
+          <li>Conversation logs (every message)</li>
+          <li>Take-over button (human override)</li>
+        </ul>
+      </div>
+      <div class="col ghl">
+        <h4>GHL owns</h4>
+        <ul>
+          <li>Customer-service AI bot (FAQ)</li>
+          <li>Calendar booking flows</li>
+          <li>Admin escalation notifications</li>
+          <li>CRM contact record (synced)</li>
+          <li>Email + SMS sequences</li>
+          <li>Newsletter capture</li>
+          <li>Workflow triggers</li>
+          <li>Reporting on AI conversation outcomes</li>
+        </ul>
+      </div>
+      <div class="col hyb">
+        <h4>How they bridge</h4>
+        <ul>
+          <li>Backend forwards inbound text to GHL via API</li>
+          <li>GHL workflow runs AI bot · books · escalates</li>
+          <li>GHL fires outbound webhook back to backend</li>
+          <li>Backend sends the reply via Meta Graph</li>
+          <li>Every order syncs to GHL contact record</li>
+          <li>Escape word "menu" works from any state</li>
+          <li>Single Meta WhatsApp number for both lanes</li>
+          <li>One GHL sub-account · location <code>dzu95Ecw…</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 class="sub" style="margin-top:8mm">Files + decisions Hi-Service owns next</h3>
+    <table class="filetbl">
+      <thead><tr><th style="width:36%">Item</th><th style="width:14%">Owner</th><th>Detail</th></tr></thead>
+      <tbody>
+        <tr><td><b>GHL Private Integration Token</b></td><td>You</td><td>Settings → Private Integrations on sub-account <code>dzu95Ecw2Cq2nFzf3a0G</code> · scopes: Conversations, Contacts, Calendars, Workflows</td></tr>
+        <tr><td><b>Meta WhatsApp Cloud API app</b></td><td>You + HiveCliq</td><td>Separate from imappliedseo's existing app · System User Token · Phone Number ID · WABA ID</td></tr>
+        <tr><td><b>Xero credentials</b></td><td>You</td><td>OAuth Client ID + Secret + refresh token + tenant ID for Hi-Service's Xero org</td></tr>
+        <tr><td><b>PayFast LIVE merchant</b></td><td>You</td><td>Production merchant_id, merchant_key, passphrase (current sandbox values are unusable)</td></tr>
+        <tr><td><b>cPanel access for orders subdomain</b></td><td>You</td><td>Add <code>orders.hi-servicegas.co.za</code> to hivecliqapps cPanel · or own hosting if preferred</td></tr>
+        <tr><td><b>FAQ / company info doc</b></td><td>You</td><td>Knowledge base for the GHL AI bot · areas served · pricing · hours · refunds · common questions</td></tr>
+        <tr><td><b>Calendar use case</b></td><td>You</td><td>What does the AI book? · consultations? · installation appointments? · returning bottle exchanges?</td></tr>
+        <tr><td><b>Escalation target</b></td><td>You</td><td>When the AI flags · which Slack channel / which GHL user / which phone number?</td></tr>
+      </tbody>
+    </table>
+
+    <div class="signoff">
+      <div>
+        <h3>Roadmap ready for sign-off.</h3>
+        <p>Approve the build plan, drop the credentials in the file table, and Day 1 starts. Old n8n keeps running until cutover.</p>
+      </div>
+      <div class="ctaright">
+        <div style="margin-bottom:6px"><b>Shawn Lochner</b><br>HiveCliq · AI · Automation · Marketing</div>
+        <div>shawn@hivecliq.online</div>
+      </div>
+    </div>
+  </div>
+  <div class="brand-bar"><div class="stripe"></div><div>BUILD PLAN · RECOMMENDATION · SIGN-OFF</div><div class="meta"><span>www.hivecliq.online</span><span class="pn">05 / 05</span></div></div>
+</section>
+
+</body>
+</html>

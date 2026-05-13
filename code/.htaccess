@@ -1,0 +1,47 @@
+# =====================================================
+# Hi-Service Chatbot — .htaccess
+# =====================================================
+
+# Force HTTPS
+RewriteEngine On
+RewriteCond %{HTTPS} !=on
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Block direct access to dotfiles, .env, includes/, logs/
+RedirectMatch 404 /\.env
+RedirectMatch 404 /\.git
+RedirectMatch 404 /includes/
+RedirectMatch 404 /logs/
+RedirectMatch 404 /tests/
+RedirectMatch 404 /migrations/
+RedirectMatch 404 /schema\.sql$
+
+# Security headers
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" env=HTTPS
+  Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+</IfModule>
+
+# Disable LiteSpeed cache on dynamic paths
+<IfModule LiteSpeed>
+  RewriteRule ^admin/.* - [E=Cache-Control:no-cache]
+  RewriteRule ^api/.* - [E=Cache-Control:no-cache]
+  CacheLookup public on
+</IfModule>
+
+# Default doc
+DirectoryIndex index.php index.html
+
+# Pretty URLs (optional, route /shop/foo to shop/foo.php if it exists)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^shop/([a-z0-9_-]+)/?$ shop/$1.php [L,QSA]
+RewriteRule ^admin/([a-z0-9_-]+)/?$ admin/$1.php [L,QSA]
+
+# Compression
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json application/xml
+</IfModule>

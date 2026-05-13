@@ -1,0 +1,28 @@
+# Secrets — NEVER commit
+.env
+.env.local
+.env.production
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editor noise
+*.bak
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Logs from the server (never want these in git)
+code/logs/*.log
+code/logs/*.txt
+!code/logs/.gitkeep
+
+# Build / vendor
+vendor/
+node_modules/
+.phpunit.result.cache
+
+# Temp test cookies (smoke-testing artefacts)
+/tmp/

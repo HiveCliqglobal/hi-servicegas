@@ -1,0 +1,1465 @@
+{
+  "name": "Sub Workflow: PayFast Payment Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/payfast-itn",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "30271aeb-4a6e-40d7-9088-a66c968f6240",
+      "name": "Webhook",
+      "webhookId": "82f8b503-cd15-4577-a1eb-e154554eb3a3"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5c8f9ced-aca7-4a89-af12-07849462a2c4",
+              "leftValue": "={{ $json.signature_valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "238c45bd-44e2-4979-8387-f870746a8f69",
+              "leftValue": "={{ $json.payment_status }}",
+              "rightValue": "COMPLETE",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "900fd47a-d5a1-47a6-80e7-debc4e828af0",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "// =================================================================================================\n// PAYFAST ITN VERIFICATION WHEN n8n PROVIDES ONLY JSON BODY (NO rawBody)\n// - Uses insertion order from $input.item.json.body\n// - Includes empty fields (param=)\n// - Excludes only `signature`\n// - No passphrase (leave blank unless your PF dashboard has one)\n// - Inline MD5\n// =================================================================================================\n\nconst passphrase = 'PassPhrase001'; // set only if enabled in PayFast dashboard\n\n// 1) Get body as received from Webhook node\nconst pf = $input.item.json.body;\nif (!pf || typeof pf !== 'object') {\n  throw new Error('PayFast ITN: body missing or not an object.');\n}\n\n// 2) PHP-style encoder (spaces => +, and encode like PHP)\nfunction phpEncode(str) {\n  return encodeURIComponent(String(str))\n    .replace(/%20/g, '+')\n    .replace(/[!'()~]/g, escape);\n}\n\n// 3) Build param string in original key order; include empty values; exclude `signature`\nlet receivedSignature = '';\nconst parts = [];\nfor (const [k, v] of Object.entries(pf)) {\n  if (k === 'signature') {\n    receivedSignature = String(v || '');\n    continue;\n  }\n  const val = v == null ? '' : String(v);\n  // include even when empty\n  parts.push(`${k}=${phpEncode(val)}`);\n}\nlet paramString = parts.join('&');\n\n// Append passphrase only if configured\nif (passphrase) {\n  paramString += `&passphrase=${phpEncode(passphrase)}`;\n}\n\n// 4) Inline MD5 (no crypto)\nfunction md5(string) {\n  function RL(x, n){return (x<<n)|(x>>> (32-n));}\n  function AU(x,y){const l=(x&0xffff)+(y&0xffff);return ((x>>>16)+(y>>>16)+(l>>>16)<<16)|(l&0xffff);}\n  function F(x,y,z){return (x&y)|((~x)&z);} function G(x,y,z){return (x&z)|(y&(~z));}\n  function H(x,y,z){return x^y^z;}         function I(x,y,z){return y^(x|(~z));}\n  function FF(a,b,c,d,x,s,t){return AU(RL(AU(AU(a,F(b,c,d)),AU(x,t)),s),b);}\n  function GG(a,b,c,d,x,s,t){return AU(RL(AU(AU(a,G(b,c,d)),AU(x,t)),s),b);}\n  function HH(a,b,c,d,x,s,t){return AU(RL(AU(AU(a,H(b,c,d)),AU(x,t)),s),b);}\n  function II(a,b,c,d,x,s,t){return AU(RL(AU(AU(a,I(b,c,d)),AU(x,t)),s),b);}\n  function CTWA(s){\n    const l=s.length; const n=(((l+8)>>>6)+1)*16; const w=new Array(n).fill(0);\n    for(let i=0;i<l;i++){w[i>>2]|=s.charCodeAt(i)<<((i%4)*8);} \n    w[l>>2]|=0x80<<((l%4)*8); w[n-2]=l<<3; w[n-1]=l>>>29; return w;\n  }\n  function W2H(v){let r='';for(let i=0;i<4;i++){const b=(v>>> (i*8))&255;r+=('0'+b.toString(16)).slice(-2);}return r;}\n  const x=CTWA(string); let a=0x67452301,b=0xefcdab89,c=0x98badcfe,d=0x10325476;\n  for(let i=0;i<x.length;i+=16){\n    const oa=a,ob=b,oc=c,od=d;\n    a=FF(a,b,c,d,x[i+0],7,0xd76aa478); d=FF(d,a,b,c,x[i+1],12,0xe8c7b756);\n    c=FF(c,d,a,b,x[i+2],17,0x242070db); b=FF(b,c,d,a,x[i+3],22,0xc1bdceee);\n    a=FF(a,b,c,d,x[i+4],7,0xf57c0faf); d=FF(d,a,b,c,x[i+5],12,0x4787c62a);\n    c=FF(c,d,a,b,x[i+6],17,0xa8304613); b=FF(b,c,d,a,x[i+7],22,0xfd469501);\n    a=FF(a,b,c,d,x[i+8],7,0x698098d8); d=FF(d,a,b,c,x[i+9],12,0x8b44f7af);\n    c=FF(c,d,a,b,x[i+10],17,0xffff5bb1); b=FF(b,c,d,a,x[i+11],22,0x895cd7be);\n    a=FF(a,b,c,d,x[i+12],7,0x6b901122); d=FF(d,a,b,c,x[i+13],12,0xfd987193);\n    c=FF(c,d,a,b,x[i+14],17,0xa679438e); b=FF(b,c,d,a,x[i+15],22,0x49b40821);\n    a=GG(a,b,c,d,x[i+1],5,0xf61e2562); d=GG(d,a,b,c,x[i+6],9,0xc040b340);\n    c=GG(c,d,a,b,x[i+11],14,0x265e5a51); b=GG(b,c,d,a,x[i+0],20,0xe9b6c7aa);\n    a=GG(a,b,c,d,x[i+5],5,0xd62f105d); d=GG(d,a,b,c,x[i+10],9,0x02441453);\n    c=GG(c,d,a,b,x[i+15],14,0xd8a1e681); b=GG(b,c,d,a,x[i+4],20,0xe7d3fbc8);\n    a=GG(a,b,c,d,x[i+9],5,0x21e1cde6); d=GG(d,a,b,c,x[i+14],9,0xc33707d6);\n    c=GG(c,d,a,b,x[i+3],14,0xf4d50d87); b=GG(b,c,d,a,x[i+8],20,0x455a14ed);\n    a=GG(a,b,c,d,x[i+13],5,0xa9e3e905); d=GG(d,a,b,c,x[i+2],9,0xfcefa3f8);\n    c=GG(c,d,a,b,x[i+7],14,0x676f02d9); b=GG(b,c,d,a,x[i+12],20,0x8d2a4c8a);\n    a=HH(a,b,c,d,x[i+5],4,0xfffa3942); d=HH(d,a,b,c,x[i+8],11,0x8771f681);\n    c=HH(c,d,a,b,x[i+11],16,0x6d9d6122); b=HH(b,c,d,a,x[i+14],23,0xfde5380c);\n    a=HH(a,b,c,d,x[i+1],4,0xa4beea44); d=HH(d,a,b,c,x[i+4],11,0x4bdecfa9);\n    c=HH(c,d,a,b,x[i+7],16,0xf6bb4b60); b=HH(b,c,d,a,x[i+10],23,0xbebfbc70);\n    a=HH(a,b,c,d,x[i+13],4,0x289b7ec6); d=HH(d,a,b,c,x[i+0],11,0xeaa127fa);\n    c=HH(c,d,a,b,x[i+3],16,0xd4ef3085); b=HH(b,c,d,a,x[i+6],23,0x04881d05);\n    a=HH(a,b,c,d,x[i+9],4,0xd9d4d039); d=HH(d,a,b,c,x[i+12],11,0xe6db99e5);\n    c=HH(c,d,a,b,x[i+15],16,0x1fa27cf8); b=HH(b,c,d,a,x[i+2],23,0xc4ac5665);\n    a=II(a,b,c,d,x[i+0],6,0xf4292244); d=II(d,a,b,c,x[i+7],10,0x432aff97);\n    c=II(c,d,a,b,x[i+14],15,0xab9423a7); b=II(b,c,d,a,x[i+5],21,0xfc93a039);\n    a=II(a,b,c,d,x[i+12],6,0x655b59c3); d=II(d,a,b,c,x[i+3],10,0x8f0ccc92);\n    c=II(c,d,a,b,x[i+10],15,0xffeff47d); b=II(b,c,d,a,x[i+1],21,0x85845dd1);\n    a=II(a,b,c,d,x[i+8],6,0x6fa87e4f); d=II(d,a,b,c,x[i+15],10,0xfe2ce6e0);\n    c=II(c,d,a,b,x[i+6],15,0xa3014314); b=II(b,c,d,a,x[i+13],21,0x4e0811a1);\n    a=II(a,b,c,d,x[i+4],6,0xf7537e82); d=II(d,a,b,c,x[i+11],10,0xbd3af235);\n    c=II(c,d,a,b,x[i+2],15,0x2ad7d2bb); b=II(b,c,d,a,x[i+9],21,0xeb86d391);\n    a=AU(a,oa); b=AU(b,ob); c=AU(c,oc); d=AU(d,od);\n  }\n  return (W2H(a)+W2H(b)+W2H(c)+W2H(d)).toLowerCase();\n}\n\n// 5) Calculate and compare\nconst calculated = md5(paramString);\nconst valid = calculated === receivedSignature;\n\n// 6) Output\nreturn [\n  {\n    json: {\n      signature_valid: valid,\n      signature_string: paramString,\n      calculated_signature: calculated,\n      received_signature: receivedSignature,\n      // pass through useful fields\n      payment_status: pf.payment_status,\n      m_payment_id: pf.m_payment_id,\n      pf_payment_id: pf.pf_payment_id,\n      amount_gross: pf.amount_gross,\n      amount_fee: pf.amount_fee,\n      amount_net: pf.amount_net,\n      name_first: pf.name_first,\n      name_last: pf.name_last,\n      email_address: pf.email_address,\n      merchant_id: pf.merchant_id,\n      item_name: pf.item_name,\n      item_description: pf.item_description,\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "e82e8a50-35ce-4ff8-9dcb-f87b8d8518f8",
+      "name": "Verify PayFast Signature"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1MFmTHyIv6tlx7E8iquX8QQSCvptpDHDyhuC7SFRS124",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 417997070,
+          "mode": "list",
+          "cachedResultName": "Annual",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YVQ_gSh9pYpQv4n8b1huG7Am72W5CigBmnf4MVAUFfk/edit#gid=417997070"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "order_id",
+              "lookupValue": "={{ $('If').first().json.m_payment_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        832,
+        -96
+      ],
+      "id": "0484ab68-7324-42d0-ac0d-da89a0849545",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "zwuRL6yghc7ERpaA",
+          "name": "HS Sheets - Shawn"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1MFmTHyIv6tlx7E8iquX8QQSCvptpDHDyhuC7SFRS124",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 417997070,
+          "mode": "list",
+          "cachedResultName": "Annual",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YVQ_gSh9pYpQv4n8b1huG7Am72W5CigBmnf4MVAUFfk/edit#gid=417997070"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "order_id": "={{ $json.m_payment_id }}",
+            "payment_status": "={{ $json.payment_status }}"
+          },
+          "matchingColumns": [
+            "order_id"
+          ],
+          "schema": [
+            {
+              "id": "delivery_date",
+              "displayName": "delivery_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "delivery_time",
+              "displayName": "delivery_time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "customer_name",
+              "displayName": "customer_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "phone_number",
+              "displayName": "phone_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "street_address_1",
+              "displayName": "street_address_1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "street_address_2",
+              "displayName": "street_address_2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "suburb",
+              "displayName": "suburb",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "city",
+              "displayName": "city",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "postal_code",
+              "displayName": "postal_code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "order_id",
+              "displayName": "order_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "product_details",
+              "displayName": "product_details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "delivery_instructions",
+              "displayName": "delivery_instructions",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "payment_status",
+              "displayName": "payment_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        624,
+        -96
+      ],
+      "id": "ad4f0832-26c4-42a1-ad93-cd75db192215",
+      "name": "Update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "zwuRL6yghc7ERpaA",
+          "name": "HS Sheets - Shawn"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "getAll",
+        "organizationId": "7c55ee53-c2a5-4053-b6ae-f6160cb1ec25",
+        "options": {
+          "where": "=Name==\"{{ $json.customer_name }}\""
+        }
+      },
+      "type": "n8n-nodes-base.xero",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        -96
+      ],
+      "id": "55a6e0fc-f951-4c9e-ad99-b0ea448ca855",
+      "name": "Get many contacts",
+      "credentials": {
+        "xeroOAuth2Api": {
+          "id": "lxLswQxori2jDl0y",
+          "name": "HS Xero account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "LKHw0DXgHXxA5O4S",
+          "mode": "list",
+          "cachedResultName": "conversation_states",
+          "cachedResultUrl": "/projects/JcsOOdpAxS0vNoAy/datatables/LKHw0DXgHXxA5O4S"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "order_id",
+              "keyValue": "={{ $('Webhook').item.json.body.m_payment_id }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        832,
+        96
+      ],
+      "id": "0d322c33-c68e-42be-9cd9-d86f58c90696",
+      "name": "Get row(s)"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1248,
+        -96
+      ],
+      "id": "6a52dbe1-7967-4b6b-a8ce-49eb0fed495e",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: Object.assign({}, ...$input.all().map(i => i.json))\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1456,
+        -96
+      ],
+      "id": "a87b15a0-6a85-410d-8e19-4b01fc48db0b",
+      "name": "Combine Rows"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===== USE EXPANDED XERO LINES FROM STATE (THE CORRECT SOURCE) =====\n\nconst d = $json;\n\n// Parse the already-expanded invoice lines from state\nlet lineItems = [];\n\ntry {\n  if (d.invoice_lineitems_json) {\n    lineItems = JSON.parse(d.invoice_lineitems_json);\n  }\n} catch (e) {\n  throw new Error(\"invoice_lineitems_json is invalid JSON\");\n}\n\n// Safety check\nif (!Array.isArray(lineItems) || lineItems.length === 0) {\n  throw new Error(\"No valid invoice_lineitems_json found in state\");\n}\n\n// Ensure numeric fields\nlineItems = lineItems.map(l => ({\n  ItemCode: (l.ItemCode || \"\").replace(/[\\r\\n]/g, \"\").trim(),\n  Description: l.Description || \"\",\n  Quantity: Number(l.Quantity || 0),\n  UnitAmount: Number(l.UnitAmount || 0),\n  LineAmount: Number(l.LineAmount || 0),\n  TaxType: l.TaxType || \"OUTPUT3\",\n  AccountCode: l.AccountCode || \"200\"\n}));\n\n// Return exactly what Xero expects\nreturn [\n  {\n    json: {\n      ContactID: d.ContactID,\n      LineItems: lineItems,\n      Total: Number(d.order_total || 0),\n      Reference: d.order_id || \"\"\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        -96
+      ],
+      "id": "4acaef62-dff1-4351-9004-477b8e01f86d",
+      "name": "dynamic line Items"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.xero.com/api.xro/2.0/Payments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "xeroOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xero-tenant-id",
+              "value": "7c55ee53-c2a5-4053-b6ae-f6160cb1ec25"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  \"Payments\": [\n    {\n      \"Invoice\": { \"InvoiceID\": $json.Invoices[0].InvoiceID },\n      \"Account\": { \"Code\": \"810\" },\n      \"Date\": $now.toFormat(\"yyyy-MM-dd\"),\n      \"Amount\": $json.Invoices[0].Total || 0\n    }\n  ]\n}\n}}",
+        "options": {}
+      },
+      "id": "156c2c5a-ac92-451b-9c48-7e83151364c8",
+      "name": "Confirm Payment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2304,
+        -96
+      ],
+      "credentials": {
+        "xeroOAuth2Api": {
+          "id": "lxLswQxori2jDl0y",
+          "name": "HS Xero account"
+        },
+        "oAuth2Api": {
+          "id": "jiHUKxOF1vGCVB11",
+          "name": "Xero API Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.xero.com/api.xro/2.0/Invoices/{{ $json.Payments[0].Invoice.InvoiceID }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xero-tenant-id",
+              "value": "7c55ee53-c2a5-4053-b6ae-f6160cb1ec25"
+            },
+            {
+              "name": "Accept",
+              "value": "application/pdf"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "cb523601-ef5a-4df5-97f1-96a7e6d78d68",
+      "name": "Get Invoice Pdf",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2528,
+        -96
+      ],
+      "credentials": {
+        "xeroOAuth2Api": {
+          "id": "kQSBQA9GGqA2TZKm",
+          "name": "Xero account"
+        },
+        "oAuth2Api": {
+          "id": "EdGRG0kUAmot0nKP",
+          "name": "New Xero Crediantial+Scopes"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "903622826168006",
+        "recipientPhoneNumber": "={{ $('Get row(s)').first().json.phone_number }}",
+        "messageType": "document",
+        "mediaPath": "useMedian8n",
+        "additionalFields": {
+          "mediaFilename": "={{ $json.Payments[0].Invoice.InvoiceNumber }}",
+          "mediaCaption": "🏁 All done. \n\nYour order has been finalised, and our dispatch team has been notified of your delivery booking.  \n\nPlease find attached your invoice.  \n\nThank you for your support. 👍\n\n*For customer support or enquiries, contact us at:*\n\n063 693 5532 \n\ngas@hiservice.co.za"
+        }
+      },
+      "id": "d4788366-d351-4f3f-a25e-64bfe45b19ce",
+      "name": "Send WhatsApp Response1",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        3136,
+        -96
+      ],
+      "webhookId": "whatsapp-send-hybrid",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "HYxmTCKdugjsfFbK",
+          "name": "HS WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Rename PDF file based on invoice number\nconst item = $input.first();\nconst newName = `${item.json.Payments[0].Invoice.InvoiceNumber}.pdf`;\nitem.binary.data.fileName = newName;\nreturn item;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2928,
+        -96
+      ],
+      "id": "3e2a09b2-c338-4f97-a3c3-03703c0e6888",
+      "name": "Rename Pdf"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "14X6LMmxabIl_hmhIerFuuNry1JvlUTnuFPhecQwnJMw",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1l07wCrRN-8fQDkicphs6lauuwEG_HfCmYjnHbyB5qfo/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Invoice ID": "={{ $json.Payments[0].Invoice.InvoiceNumber }}",
+            "Date": "={{ $now.toISODate() }}\n",
+            "Order Date": "={{ $json.Payments[0].Invoice.DueDateString.split(\"T\")[0] }}\n",
+            "Total Amount": "={{ $json.Payments[0].Invoice.AmountPaid }}",
+            "Customer ID": "={{ $json.Payments[0].Invoice.Contact.ContactID }}",
+            "Full Name": "={{ $json.Payments[0].Invoice.Contact.Name }}",
+            "Payment Status": "={{ $json.Payments[0].Invoice.Status }}",
+            "First Name": "={{ $('Create Dynamic Xero Invoice').first().json.Invoices[0].Contact.FirstName }}",
+            "Last Name": "={{ $('Create Dynamic Xero Invoice').first().json.Invoices[0].Contact.LastName }}",
+            "Email Address": "={{ $('Create Dynamic Xero Invoice').first().json.Invoices[0].Contact.EmailAddress }}",
+            "Street Address Line 1": "={{   $('Create Dynamic Xero Invoice').first().json.Invoices[0].Contact.Addresses?.[0]?.AddressLine1   ||   $('Create Dynamic Xero Invoice').first().json.Invoices[0].Contact.Addresses?.[1]?.AddressLine1   ||   '' }}",
+            "Street Address Line 2": "={{   $('Create Dynamic Xero Invoice').first().json.Invoices[0].Contact.Addresses?.[0]?.AddressLine2   ||   $('Create Dynamic Xero Invoice').first().json.Invoices[0].Contact.Addresses?.[1]?.AddressLine2   ||   '' }}",
+            "City": "={{   $('Create Dynamic Xero Invoice').first().json.Invoices[0].Contact.Addresses?.[0]?.City   ||   $('Create Dynamic Xero Invoice').first().json.Invoices[0].Contact.Addresses?.[1]?.City   ||   '' }}",
+            "Postal Code": "={{   $('Create Dynamic Xero Invoice').first().json.Invoices[0].Contact.Addresses?.[0]?.PostalCode   ||   $('Create Dynamic Xero Invoice').first().json.Invoices[0].Contact.Addresses?.[1]?.PostalCode   ||   '' }}",
+            "Order Number": "={{ $('Get row(s) in sheet').first().json.order_id }}",
+            "Product(s) Ordered": "={{ $('Get row(s) in sheet').first().json.product_details }}",
+            "Source": "WhatsApp Order",
+            "Delivery Date": "={{ $('Get row(s) in sheet').first().json.delivery_date }}",
+            "Delivery Time": "={{ $('Get row(s) in sheet').first().json.delivery_time }}",
+            "Phone Number": "={{ $('Get row(s) in sheet').first().json.phone_number }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Customer ID",
+              "displayName": "Customer ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Full Name",
+              "displayName": "Full Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "First Name",
+              "displayName": "First Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last Name",
+              "displayName": "Last Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone Number",
+              "displayName": "Phone Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email Address",
+              "displayName": "Email Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Street Address Line 1",
+              "displayName": "Street Address Line 1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Street Address Line 2",
+              "displayName": "Street Address Line 2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Postal Code",
+              "displayName": "Postal Code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Order Number",
+              "displayName": "Order Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Order Date",
+              "displayName": "Order Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Product(s) Ordered",
+              "displayName": "Product(s) Ordered",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Total Amount",
+              "displayName": "Total Amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Payment Status",
+              "displayName": "Payment Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Invoice ID",
+              "displayName": "Invoice ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Delivery Date",
+              "displayName": "Delivery Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Delivery Time",
+              "displayName": "Delivery Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Source",
+              "displayName": "Source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2928,
+        -448
+      ],
+      "id": "808c6106-b991-4b83-8daf-d4194ea9dbc6",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "zwuRL6yghc7ERpaA",
+          "name": "HS Sheets - Shawn"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "903622826168006",
+        "recipientPhoneNumber": "=17815796941",
+        "messageType": "document",
+        "mediaPath": "useMedian8n",
+        "additionalFields": {
+          "mediaFilename": "={{ $json.Payments[0].Invoice.InvoiceNumber }}",
+          "mediaCaption": "=📢 A new WhatsApp order has just been completed. \n\nInvoice Number: {{ $json.Payments[0].Invoice.InvoiceNumber }} \nPayment ID: {{ $json.Payments[0].PaymentID }}\nOrder Amount: {{ $json.Payments[0].Amount }}\n\nPlease find attached invoice. "
+        }
+      },
+      "id": "39f21fbc-dcad-43a5-be91-ef4dc721e48b",
+      "name": "Send WhatsApp - Accounts",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        3136,
+        -272
+      ],
+      "webhookId": "whatsapp-send-hybrid",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "HYxmTCKdugjsfFbK",
+          "name": "HS WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "value": "LKHw0DXgHXxA5O4S",
+          "mode": "list",
+          "cachedResultName": "conversation_states",
+          "cachedResultUrl": "/projects/JcsOOdpAxS0vNoAy/datatables/LKHw0DXgHXxA5O4S"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "phone_number",
+              "keyValue": "={{ $json.contacts[0].input }}"
+            },
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        3504,
+        -240
+      ],
+      "id": "fd9a8956-7cea-4bc3-b87d-53026f003e0c",
+      "name": "Delete - Conversation States",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "value": "Cexuiy7nCwVKfVSx",
+          "mode": "list",
+          "cachedResultName": "hi_service_gas_catalogue",
+          "cachedResultUrl": "/projects/JcsOOdpAxS0vNoAy/datatables/Cexuiy7nCwVKfVSx"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "phone",
+              "keyValue": "={{ $json.contacts[0].input }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        3504,
+        -96
+      ],
+      "id": "8385d33a-59a0-4424-ad23-563f67919c68",
+      "name": "Delete - Catalogue"
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "903622826168006",
+        "recipientPhoneNumber": "={{ $('Get row(s)').first().json.phone_number }}",
+        "textBody": "This session has ended. No further action is required.\nType 'Hi' into the chat to start a new order.",
+        "additionalFields": {}
+      },
+      "id": "996d751a-c146-412f-8c58-c44fa645b34b",
+      "name": "Send WhatsApp Response",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        3712,
+        64
+      ],
+      "webhookId": "whatsapp-send-hybrid",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "HYxmTCKdugjsfFbK",
+          "name": "HS WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3504,
+        64
+      ],
+      "id": "123e1d09-d619-4585-9da7-5780ecbc5f15",
+      "name": "Wait",
+      "webhookId": "90d02d00-c089-4464-9525-010146d45f2c"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Workflow 2: normalise LineItems from incoming item (no node references)\n\nconst input = $json; // this node's direct input\n\nconst ContactID = input.ContactID;\nconst Reference = input.Reference || input.order_id || \"\";\nconst Total = Number(input.Total ?? 0);\n\nconst raw = Array.isArray(input.LineItems) ? input.LineItems : [];\n\nconst LineItems = raw\n  .map(li => {\n    const ItemCode = String(li.ItemCode ?? li.itemCode ?? \"\")\n      .replace(/[\\r\\n]/g, \"\")\n      .trim();\n\n    const Description = String(li.Description ?? li.description ?? ItemCode).trim();\n\n    const Quantity = Number(li.Quantity ?? li.quantity ?? 0);\n    const UnitAmount = Number(li.UnitAmount ?? li.unitAmount ?? 0);\n\n    const LineAmount = Number(\n      (li.LineAmount ?? li.lineAmount ?? (Quantity * UnitAmount)).toFixed(2)\n    );\n\n    const TaxType = String(li.TaxType ?? li.taxType ?? \"OUTPUT3\");\n    const AccountCode = String(li.AccountCode ?? li.accountCode ?? \"200\");\n\n    if (!ItemCode || !Number.isFinite(Quantity) || Quantity <= 0) return null;\n\n    return { ItemCode, Description, Quantity, UnitAmount, LineAmount, TaxType, AccountCode };\n  })\n  .filter(Boolean);\n\nreturn [\n  {\n    json: {\n      ContactID,\n      Reference,\n      Total,\n      LineItems,\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1872,
+        -96
+      ],
+      "id": "784b690b-cb05-40a7-9dc6-6cb0b3bf7e12",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.xero.com/api.xro/2.0/Invoices",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "xeroOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xero-tenant-id",
+              "value": "7c55ee53-c2a5-4053-b6ae-f6160cb1ec25"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"Invoices\": [\n    {\n      \"Type\": \"ACCREC\",\n      \"Contact\": {\n        \"ContactID\": \"{{ $json.ContactID }}\"\n      },\n      \"Date\": \"{{ $now.toFormat('yyyy-MM-dd') }}\",\n      \"DueDate\": \"{{ $now.toFormat('yyyy-MM-dd') }}\",\n      \"LineAmountTypes\": \"Inclusive\",\n      \"Status\": \"AUTHORISED\",\n      \"Reference\": \"{{ $json.Reference || '' }}\",\n      \"LineItems\": {{ JSON.stringify($json.LineItems) }}\n    }\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2080,
+        -96
+      ],
+      "id": "314d870e-b556-40a5-9141-76e843a76162",
+      "name": "Create Dynamic Xero Invoice",
+      "credentials": {
+        "xeroOAuth2Api": {
+          "id": "kQSBQA9GGqA2TZKm",
+          "name": "Xero account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1MFmTHyIv6tlx7E8iquX8QQSCvptpDHDyhuC7SFRS124",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 417997070,
+          "mode": "list",
+          "cachedResultName": "Annual",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YVQ_gSh9pYpQv4n8b1huG7Am72W5CigBmnf4MVAUFfk/edit#gid=417997070"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "order_id": "={{ $json.Payments[0].Invoice.Reference }}",
+            "Invoice ID": "={{ $json.Payments[0].Invoice.InvoiceNumber }}"
+          },
+          "matchingColumns": [
+            "order_id"
+          ],
+          "schema": [
+            {
+              "id": "delivery_date",
+              "displayName": "delivery_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "delivery_time",
+              "displayName": "delivery_time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Slot#",
+              "displayName": "Slot#",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "customer_name",
+              "displayName": "customer_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "phone_number",
+              "displayName": "phone_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "street_address_1",
+              "displayName": "street_address_1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "street_address_2",
+              "displayName": "street_address_2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "suburb",
+              "displayName": "suburb",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "city",
+              "displayName": "city",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "postal_code",
+              "displayName": "postal_code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "order_id",
+              "displayName": "order_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "product_details",
+              "displayName": "product_details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "delivery_instructions",
+              "displayName": "delivery_instructions",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "payment_status",
+              "displayName": "payment_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Invoice ID",
+              "displayName": "Invoice ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2928,
+        -272
+      ],
+      "id": "51f7d687-4c65-4659-9d3d-dcaa41b398e7",
+      "name": "Add Invoice ID to Delivery Sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "zwuRL6yghc7ERpaA",
+          "name": "HS Sheets - Shawn"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "n8n.imappliedseo.com",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:48.0) Gecko/20100101 Firefox/48.0",
+            "content-length": "467",
+            "accept": "*/*",
+            "content-type": "application/x-www-form-urlencoded",
+            "referer": "https://www.payfast.co.za",
+            "via": "1.1 Caddy",
+            "x-forwarded-for": "144.126.193.139",
+            "x-forwarded-host": "n8n.imappliedseo.com",
+            "x-forwarded-proto": "https",
+            "accept-encoding": "gzip"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "m_payment_id": "ORD-20260331145539",
+            "pf_payment_id": "3082546",
+            "payment_status": "COMPLETE",
+            "item_name": "Gas Delivery Order",
+            "item_description": "Order ORD-20260331145539",
+            "amount_gross": "196.52",
+            "amount_fee": "-4.52",
+            "amount_net": "192.00",
+            "custom_str1": "",
+            "custom_str2": "",
+            "custom_str3": "",
+            "custom_str4": "",
+            "custom_str5": "",
+            "custom_int1": "",
+            "custom_int2": "",
+            "custom_int3": "",
+            "custom_int4": "",
+            "custom_int5": "",
+            "name_first": "Karl",
+            "name_last": "Marais",
+            "email_address": "karl@imapplied.co.za",
+            "merchant_id": "10043198",
+            "signature": "a791d54a70aad15c46ed7b84fa49a5c9"
+          },
+          "webhookUrl": "https://n8n.imappliedseo.com/webhook/payfast-itn",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify PayFast Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify PayFast Signature": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Get many contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many contacts": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Combine Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Combine Rows": {
+      "main": [
+        [
+          {
+            "node": "dynamic line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "dynamic line Items": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm Payment": {
+      "main": [
+        [
+          {
+            "node": "Get Invoice Pdf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Invoice Pdf": {
+      "main": [
+        [
+          {
+            "node": "Rename Pdf",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Add Invoice ID to Delivery Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rename Pdf": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Response1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send WhatsApp - Accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp Response1": {
+      "main": [
+        [
+          {
+            "node": "Delete - Conversation States",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Delete - Catalogue",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Create Dynamic Xero Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Dynamic Xero Invoice": {
+      "main": [
+        [
+          {
+            "node": "Confirm Payment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "2a99930f-3c7b-419d-ba14-4a458cac4a78",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6b07cfb10f272a367e8a07f9f24f95b006fa8f6fdef761af832f21431a51bfe8"
+  },
+  "id": "C6LGmXnHKlg31dd5",
+  "tags": [
+    {
+      "updatedAt": "2025-10-26T13:35:05.368Z",
+      "createdAt": "2025-10-26T13:35:05.368Z",
+      "id": "Tgh6xBdsuOLyTwJx",
+      "name": "HiService"
+    }
+  ]
+}

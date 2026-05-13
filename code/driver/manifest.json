@@ -1,0 +1,38 @@
+{
+  "name": "Hi-Service Driver",
+  "short_name": "HS Driver",
+  "description": "Hi-Service Gas — driver delivery app",
+  "start_url": "/driver/today.php",
+  "scope": "/driver/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
+  "categories": ["productivity", "business"],
+  "icons": [
+    {
+      "src": "/driver/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/driver/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Today's deliveries",
+      "url": "/driver/today.php",
+      "icons": [{"src": "/driver/icon-192.png", "sizes": "192x192"}]
+    },
+    {
+      "name": "Delivered",
+      "url": "/driver/delivered.php",
+      "icons": [{"src": "/driver/icon-192.png", "sizes": "192x192"}]
+    }
+  ]
+}
