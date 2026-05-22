@@ -28,12 +28,28 @@ final class Xero
     public const CONNECTIONS_URL = 'https://api.xero.com/connections';
     public const API_BASE        = 'https://api.xero.com/api.xro/2.0';
 
-    /** Granular scopes (apps created post-2 March 2026 require these). */
+    /**
+     * Minimal working scope set for invoice creation.
+     *
+     * Two hard-won lessons from Command Center, both must be applied together:
+     *
+     *   1. DROP openid/profile/email — they require the Xero app to be set up
+     *      as an OpenID Connect provider (separate config, not the default for
+     *      a basic Web App). Xero returns "invalid_scope 500" if requested
+     *      without that config. We don't need user identity, just data access.
+     *      (Command Center commit 868976e)
+     *
+     *   2. USE GRANULAR scopes for apps created after 2 March 2026. The old
+     *      broad accounting.transactions / accounting.reports.read are
+     *      rejected with "invalid_scope 500".
+     *      (Command Center commit ed1e30e)
+     *
+     * So: only granular accounting scopes + offline_access. Nothing else.
+     */
     public const SCOPES = [
-        'accounting.transactions',           // need write for invoice create
-        'accounting.contacts',               // read + write contacts
-        'accounting.settings.read',          // tenant info
-        'offline_access',                    // refresh tokens
+        'offline_access',                    // refresh tokens (REQUIRED — otherwise re-auth every 30 min)
+        'accounting.invoices',               // create + read invoices (granular WRITE)
+        'accounting.contacts',               // create + read customers (granular WRITE)
     ];
 
     // ============= OAuth flow =============
