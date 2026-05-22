@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/bootstrap.php';
 require_once __DIR__ . '/../includes/xero.php';
+require_once __DIR__ . '/../includes/wa.php';
 require_once __DIR__ . '/../includes/env_writer.php';
 require_login();
 
@@ -43,6 +44,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify($_POST['csrf'] ?? '')) 
         ]);
         log_event('admin.integration.meta_saved');
         $_SESSION[$ok ? 'flash' : 'flash_error'] = $ok ? '✓ Meta WhatsApp credentials saved.' : 'Could not write to .env.';
+        redirect('/admin/connections.php');
+    }
+    if ($action === 'test_wa_send') {
+        $to   = trim((string) ($_POST['wa_to']   ?? ''));
+        $body = trim((string) ($_POST['wa_body'] ?? ''));
+        if ($to === '' || $body === '') {
+            $_SESSION['flash_error'] = 'Recipient and message are both required.';
+        } elseif (!WA::isConfigured()) {
+            $_SESSION['flash_error'] = 'Meta is not configured — fill in System User Token + Phone Number ID first.';
+        } else {
+            try {
+                $resp = WA::sendText($to, $body);
+                $mid  = $resp['messages'][0]['id'] ?? '(no id)';
+                $_SESSION['flash'] = '✓ WhatsApp sent to ' . WA::normalizePhone($to) . ' — Meta message id: ' . $mid;
+                log_event('admin.integration.wa_test_sent', null, WA::normalizePhone($to), ['mid' => $mid]);
+            } catch (Throwable $e) {
+                $_SESSION['flash_error'] = '✗ Send failed: ' . $e->getMessage();
+            }
+        }
         redirect('/admin/connections.php');
     }
     if ($action === 'save_ghl') {
@@ -234,6 +254,25 @@ include __DIR__ . '/_header.php';
         <div class="kv"><span>System User Token</span><b><?= h(env_mask($meta['system_user_token'])) ?></b></div>
         <div class="kv"><span>Webhook URL</span><b class="muted small">https://hiservice.store/api/webhook/whatsapp.php</b></div>
         <div class="kv"><span>Verify Token</span><b><?= h($meta['verify_token'] ?: '—') ?></b></div>
+
+        <details class="collapsible" open style="margin:14px 0 0">
+          <summary><span>🧪 Send a test WhatsApp message</span></summary>
+          <div class="collapsible-body">
+            <p class="muted small" style="margin:0 0 10px">Sends a plain text message via the Cloud API. Recipient must be on the Meta "To" whitelist while in sandbox phase (5-recipient cap until business verification).</p>
+            <form method="post" class="form-grid">
+              <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
+              <input type="hidden" name="action" value="test_wa_send">
+              <div class="form-row form-row-2">
+                <label><span>Recipient phone</span><input type="text" name="wa_to" placeholder="e.g. 27821234567 or 0821234567" required></label>
+                <label><span>Message body</span><input type="text" name="wa_body" value="Hello from Hi-Service 👋 (test message from admin panel)" required></label>
+              </div>
+              <div class="form-foot">
+                <span class="muted small">Outbound is logged to the <code>conversations</code> table.</span>
+                <button type="submit" class="btn btn-primary">💬 Send WhatsApp</button>
+              </div>
+            </form>
+          </div>
+        </details>
       <?php else: ?>
         <p class="muted">Configure Meta to enable WhatsApp ordering + delivery notifications.</p>
         <p class="muted small">Webhook URL to register in Meta dashboard:<br><code>https://hiservice.store/api/webhook/whatsapp.php</code></p>

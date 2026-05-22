@@ -22,6 +22,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../includes/bootstrap.php';
+require_once __DIR__ . '/../../includes/wa.php';
 
 // ════════════ GET — Meta verification handshake ════════════
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -100,8 +101,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     log_event('meta.message.in', null, $from, ['type' => $type, 'preview' => substr($text, 0, 100)]);
 
-                    // TODO Stage 3 routing: feed into state_machine + send reply via wa_send_text()
-                    // For now, this just logs — full routing once a test message round-trips successfully.
+                    // ════════════ Stage-3 ECHO STUB ════════════
+                    // Minimal sender test — proves outbound + inbound loop closes.
+                    // Replace with state_machine routing once order flow is built.
+                    if ($type === 'text' && $text !== '') {
+                        try {
+                            WA::sendText($from, "Got your message: \"" . substr($text, 0, 200) . "\"\n\n🚧 Hi-Service ordering bot is still in test mode — full menu coming online next week. For urgent orders, call 021 492 8515.");
+                        } catch (Throwable $e) {
+                            log_to_file('whatsapp', 'echo reply failed', ['err' => $e->getMessage(), 'to' => $from]);
+                        }
+                    }
                 }
 
                 // Also log statuses (delivered / read) for outbound messages
