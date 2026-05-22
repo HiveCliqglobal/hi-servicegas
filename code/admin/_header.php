@@ -27,6 +27,7 @@ $user = current_user();
     <a href="/admin/products.php">✅ Approved Products</a>
     <a href="/admin/delivery-zones.php">📍 Delivery Zones</a>
     <a href="/admin/drivers.php">🚚 Drivers</a>
+    <a href="/admin/connections.php">🔌 Connected Accounts</a>
     <a href="/admin/audit.php">🔒 Audit Trail</a>
     <a href="/admin/agent.php">🤖 Agent</a>
     <a href="/admin/ai-tester.php">🧪 AI Test Bench</a>

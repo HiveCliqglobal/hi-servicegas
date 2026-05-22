@@ -44,19 +44,22 @@ $order = OrderRepo::findById($orderId);
 
 log_event('shop.pay.redirect', 'order', $order['order_reference'], ['total' => $total]);
 
-// 3. Generate PayFast URL — STUB until Stage 3 day 7
-// For now, we redirect to a stand-in /shop/pay-stub.php that simulates success.
-// When PayFast is wired, this whole block is replaced by payfast_build_pay_link().
+// 3. Generate PayFast checkout URL (sandbox or live depending on PAYFAST_USE_SANDBOX)
 $payfastReady = !empty(env('PAYFAST_MERCHANT_ID')) && !empty(env('PAYFAST_MERCHANT_KEY'));
 
 if ($payfastReady) {
     require_once __DIR__ . '/../includes/payfast.php';
+    require_once __DIR__ . '/../includes/customer_repo.php';
+    $customer = CustomerRepo::findById($customerId);
     $url = payfast_build_pay_link([
         'order_reference' => $order['order_reference'],
         'order_total'     => $total,
-        'customer_name'   => trim($order['full_name'] ?? ''),
-        'customer_email'  => '',  // load from customer
-        'customer_phone'  => '',
+        'customer_name'   => trim((string) ($customer['full_name'] ?? '')),
+        'customer_email'  => (string) ($customer['email'] ?? ''),
+        'customer_phone'  => (string) ($customer['phone'] ?? ''),
+    ]);
+    log_event('shop.pay.payfast_redirect', 'order', $order['order_reference'], [
+        'sandbox' => (bool) env('PAYFAST_USE_SANDBOX', false),
     ]);
     redirect($url);
 }
