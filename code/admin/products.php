@@ -1,15 +1,30 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/bootstrap.php';
+require_once __DIR__ . '/../includes/xero.php';
+require_once __DIR__ . '/../includes/xero_sync.php';
 require_login();
 
-$flash = null;
-$errors = [];
+$flash      = null;
+$errors     = [];
+$xeroResult = null;     // populated when admin clicks the Xero sync button
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify($_POST['csrf'] ?? '')) {
     $action = (string) ($_POST['action'] ?? '');
     try {
-        if ($action === 'toggle') {
+        if ($action === 'xero_sync') {
+            $xeroResult = XeroSync::syncItems();
+            if (!empty($xeroResult['ok'])) {
+                $flash = sprintf(
+                    '✅ Synced from Xero — pulled %d items · %d created · %d updated%s. New items are HIDDEN by default — tick them below to put them on the menu.',
+                    $xeroResult['pulled'], $xeroResult['created'], $xeroResult['updated'],
+                    $xeroResult['orphans'] > 0 ? ' · ' . $xeroResult['orphans'] . ' local orphan(s)' : ''
+                );
+            } else {
+                $errors[] = '✗ Xero sync failed: ' . implode('; ', $xeroResult['errors'] ?? ['unknown error']);
+            }
+        }
+        elseif ($action === 'toggle') {
             $id = (int) ($_POST['id'] ?? 0);
             db()->prepare("UPDATE products SET is_active = 1 - is_active WHERE id = :id")->execute([':id' => $id]);
             log_event('admin.product.toggled', 'product', (string) $id);
@@ -50,8 +65,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify($_POST['csrf'] ?? '')) 
     }
 }
 
-$products = db()->query("SELECT * FROM products ORDER BY sort_order, name")->fetchAll();
-$active   = count(array_filter($products, fn($p) => $p['is_active']));
+// Stock filter — ADMIN-ONLY view filter. Does NOT change what customers see.
+// Customer catalogue (WhatsApp + web shop) is always `is_active = 1` regardless of stock.
+$stockFilter = (string) ($_GET['stock'] ?? 'all');
+$where = '1=1';
+switch ($stockFilter) {
+    case 'in_stock':   $where = 'is_tracked = 1 AND in_stock_qty > 0'; break;
+    case 'out_stock':  $where = 'is_tracked = 1 AND in_stock_qty <= 0'; break;
+    case 'untracked':  $where = 'is_tracked = 0'; break;
+    case 'approved':   $where = 'is_active = 1'; break;
+    case 'hidden':     $where = 'is_active = 0'; break;
+    case 'risk':       $where = 'is_active = 1 AND is_tracked = 1 AND in_stock_qty <= 0'; break;  // approved-but-out-of-stock
+}
+$products = db()->query("SELECT * FROM products WHERE {$where} ORDER BY sort_order, name")->fetchAll();
+$active   = (int) db()->query("SELECT COUNT(*) c FROM products WHERE is_active = 1")->fetch()['c'];
+$totalAll = (int) db()->query("SELECT COUNT(*) c FROM products")->fetch()['c'];
+$riskCnt  = (int) db()->query("SELECT COUNT(*) c FROM products WHERE is_active = 1 AND is_tracked = 1 AND in_stock_qty <= 0")->fetch()['c'];
 
 $editing = null;
 if (!empty($_GET['edit'])) {
@@ -74,21 +103,47 @@ include __DIR__ . '/_header.php';
 
 <div class="stat-grid">
   <div class="stat-card">
-    <div class="stat-label">Total products</div>
-    <div class="stat-value"><?= count($products) ?></div>
+    <div class="stat-label">Total in DB</div>
+    <div class="stat-value"><?= $totalAll ?></div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">On the menu</div>
+    <div class="stat-label">Customer-facing</div>
     <div class="stat-value" style="color:var(--success)"><?= $active ?></div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Hidden</div>
-    <div class="stat-value" style="color:var(--grey)"><?= count($products) - $active ?></div>
+    <div class="stat-value" style="color:var(--grey)"><?= $totalAll - $active ?></div>
   </div>
-  <div class="stat-card">
-    <div class="stat-label">Source</div>
-    <div class="stat-value" style="font-size:14px">📦 Synced from Xero</div>
+  <div class="stat-card" style="<?= $riskCnt > 0 ? 'background:#fef2f2;border:1px solid #fecaca' : '' ?>">
+    <div class="stat-label">⚠ Approved &amp; out of stock</div>
+    <div class="stat-value" style="color:<?= $riskCnt > 0 ? '#dc2626' : 'var(--grey)' ?>"><?= $riskCnt ?></div>
   </div>
+</div>
+
+<div class="card" style="padding:14px 18px;margin-bottom:14px">
+  <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+    <span class="muted small" style="margin-right:6px"><b>Admin view filter:</b></span>
+    <?php
+      $chips = [
+        'all'       => 'All ('       . $totalAll . ')',
+        'approved'  => '✓ Approved (' . $active   . ')',
+        'hidden'    => '○ Hidden ('   . ($totalAll - $active) . ')',
+        'in_stock'  => '📦 In stock',
+        'out_stock' => '⊘ Out of stock',
+        'risk'      => '⚠ Approved AND out of stock (' . $riskCnt . ')',
+        'untracked' => '— Untracked',
+      ];
+      foreach ($chips as $k => $label):
+        $on = $stockFilter === $k;
+    ?>
+      <a href="?stock=<?= h($k) ?>" class="btn btn-sm <?= $on ? 'btn-primary' : 'btn-ghost' ?>" style="text-decoration:none"><?= h($label) ?></a>
+    <?php endforeach; ?>
+  </div>
+  <p class="muted small" style="margin:8px 0 0">
+    These filters change what YOU see in this admin table — they don't affect customers.
+    Customer catalogue (WhatsApp + web shop) ALWAYS shows everything you've marked Approved, regardless of stock.
+    Use the <b>⚠ Approved AND out of stock</b> filter to find products that need your attention.
+  </p>
 </div>
 
 <?php if ($editing): ?>
@@ -151,7 +206,18 @@ include __DIR__ . '/_header.php';
             <td><code><?= h($p['code']) ?></code></td>
             <td><b><?= h($p['name']) ?></b></td>
             <td><b><?= h(money($p['price'])) ?></b></td>
-            <td class="muted small"><?= $p['is_tracked'] ? (int) $p['in_stock_qty'] : '—' ?></td>
+            <td class="muted small">
+              <?php if (!$p['is_tracked']): ?>
+                <span style="color:var(--grey)">—</span>
+              <?php elseif ((int) $p['in_stock_qty'] <= 0): ?>
+                <span style="color:#dc2626;font-weight:600"<?= $p['is_active'] ? ' title="⚠ Approved but out of stock — customers can still order this!"' : '' ?>>0</span>
+                <?= $p['is_active'] ? ' ⚠' : '' ?>
+              <?php elseif ((int) $p['in_stock_qty'] < 5): ?>
+                <span style="color:#d97706;font-weight:600"><?= (int) $p['in_stock_qty'] ?></span>
+              <?php else: ?>
+                <span style="color:#15803d"><?= (int) $p['in_stock_qty'] ?></span>
+              <?php endif; ?>
+            </td>
             <td class="muted small"><?= (int) $p['sort_order'] ?></td>
             <td>
               <form method="post" style="display:inline">
@@ -176,9 +242,31 @@ include __DIR__ . '/_header.php';
   </form>
 </div>
 
-<div class="card" style="background:#fffaf0;border-left:3px solid var(--warn)">
+<?php
+$xeroConn = Xero::isConnected() ? Xero::connectionInfo() : null;
+?>
+<div class="card" style="<?= $xeroConn ? 'background:#f0fdf4;border-left:3px solid #15803d' : 'background:#fffaf0;border-left:3px solid var(--warn)' ?>">
   <h3 style="margin-top:0">🔌 Sync from Xero</h3>
-  <p>Xero is not yet connected. Once we wire it (Stage 3 day 6), a <code>Sync now</code> button appears here that pulls every active Xero item into this table. Approved products stay approved across syncs.</p>
+  <?php if ($xeroConn): ?>
+    <p>Connected to <b><?= h($xeroConn['tenant_name']) ?></b>. Pulls every active sale item from Xero into the catalogue above. Existing approval state is preserved — new items default to <b>Hidden</b>, you decide what shows to customers.</p>
+    <form method="post" style="display:flex;gap:10px;align-items:center">
+      <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
+      <input type="hidden" name="action" value="xero_sync">
+      <button type="submit" class="btn btn-primary">🔄 Sync items now</button>
+      <span class="muted small">Sync also runs daily via cron (when wired). Manual sync is safe to run any time.</span>
+    </form>
+  <?php else: ?>
+    <p>Xero is not yet connected. Visit <a href="/admin/connections.php">Connected Accounts</a> to link it.</p>
+  <?php endif; ?>
+
+  <?php if ($xeroResult): ?>
+    <details style="margin-top:14px" <?= empty($xeroResult['ok']) ? 'open' : '' ?>>
+      <summary><b>Sync details</b></summary>
+      <div style="margin-top:8px;font-family:'SF Mono',Menlo,monospace;font-size:12.5px;background:#fff;border:1px solid var(--line);border-radius:6px;padding:10px;white-space:pre-wrap"><?php
+        echo h(json_encode($xeroResult, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+      ?></div>
+    </details>
+  <?php endif; ?>
 </div>
 
 <?php include __DIR__ . '/_footer.php'; ?>

@@ -145,7 +145,7 @@ final class Conversation
                 return self::actCollectOrderDetails($text, $phone, $session, $stateData, $trans);
 
             case 'check_delivery_slots':
-                return self::actShowSlots($stateData);
+                return self::actShowSlots($stateData, $trans);
 
             case 'ask_for_address':
                 return $template ?: "What's your new delivery address?";
@@ -183,24 +183,22 @@ final class Conversation
         $cust = CustomerRepo::findByPhone($phone);
 
         if (!$cust) {
-            // New customer — collect postal code first
             $trans['next_step'] = StateMachine::S_AWAITING_STREET_CODE;
             return "👋 Welcome to Hi-Service Gas!\n\nLooks like this is your first time ordering — let's get you set up.\n\nFirst, what's your *4-digit postal code*? (so we can check we deliver to your area)\n\n*Example:* 7140";
         }
 
-        // Returning customer
         $stateData['customer_id'] = (int) $cust['id'];
+        $firstName = self::firstName((string) ($cust['full_name'] ?? ''));
         $lastOrder = self::lastOrderFor((int) $cust['id']);
 
         if ($lastOrder) {
             $trans['next_step'] = StateMachine::S_AWAITING_ORDER_CHOICE;
             $summary = self::summariseOrder($lastOrder);
-            return "Welcome back, {$cust['first_name']}! 👋\n\nYour last order:\n{$summary}\n\n*Reply with:*\n1 - to repeat this order\n2 - to place a different order";
+            return "Welcome back" . ($firstName ? ", {$firstName}" : '') . "! 👋\n\nYour last order:\n{$summary}\n\n*Reply with:*\n*1* - to repeat this order\n*2* - to place a different order";
         }
 
-        // Returning but no past order — go straight to products
         $trans['next_step'] = StateMachine::S_SHOWING_PRODUCTS;
-        return "Welcome back, {$cust['first_name']}! 👋\n\n" . self::tplProductCatalogue();
+        return "Welcome back" . ($firstName ? ", {$firstName}" : '') . "! 👋\n\n" . self::tplProductCatalogue();
     }
 
     private static function actConfirmCurrentAddress(string $phone, array $session, array &$stateData, array &$trans): string
@@ -211,16 +209,74 @@ final class Conversation
             return "Something went wrong — let's start over.\n\n" . self::tplMenu();
         }
 
+        // ─── Repeat-order auto-load ───
+        // If the cart is empty BUT the customer has a previous paid order, copy its lines
+        // into $stateData['cart']. This handles the "1 = repeat last order" flow — the
+        // FSM jumps straight here from S_AWAITING_ORDER_CHOICE without going through
+        // product selection, so the cart needs to come from history. Without this, the
+        // payment step would send R 0.00 to PayFast and crash with a 400.
+        if (empty($stateData['cart']) || (float) ($stateData['cart_total'] ?? 0) <= 0) {
+            $last = self::lastOrderFor($custId);
+            if ($last) {
+                $lines = OrderRepo::linesFor((int) $last['id']);
+                if (!empty($lines)) {
+                    $cart  = [];
+                    $total = 0.0;
+                    foreach ($lines as $l) {
+                        $cart[] = [
+                            'product_id'   => (int) ($l['product_id']   ?? 0),
+                            'product_name' => (string) ($l['product_name'] ?? 'Item'),
+                            'qty'          => (int) ($l['qty']          ?? $l['quantity'] ?? 1),
+                            'unit_price'   => (float) ($l['unit_price'] ?? 0),
+                            'line_total'   => (float) ($l['line_total'] ?? 0),
+                        ];
+                        $total += (float) ($l['line_total'] ?? 0);
+                    }
+                    $stateData['cart']       = $cart;
+                    $stateData['cart_total'] = $total;
+                    log_event('conversation.repeat_order_loaded', null, $phone, [
+                        'source_order' => $last['id'],
+                        'line_count'   => count($cart),
+                        'total'        => $total,
+                    ]);
+                }
+            }
+        }
+
         $addr = CustomerRepo::defaultAddress($custId);
         if (!$addr) {
             $trans['next_step'] = StateMachine::S_AWAITING_NEW_ADDRESS;
-            return "I don't have a delivery address on file. What's your address?\n\nPlease include: *Street, Suburb, City, Postal code*";
+            return "I don't have a delivery address on file. What's your address?\n\nPlease include each on its own line:\n*Street + number*\n*Suburb*\n*City*\n*4-digit postal code*";
         }
 
         $stateData['address_id'] = (int) $addr['id'];
-        $addrLine = trim(($addr['street'] ?? '') . ', ' . ($addr['suburb'] ?? '') . ', ' . ($addr['city'] ?? '') . ' ' . ($addr['postal_code'] ?? ''), ', ');
+        $addrLine = self::formatAddress($addr);
 
-        return "Delivering to:\n📍 *{$addrLine}*\n\n*Reply with:*\nS/Y - same address\nD/N - different address";
+        // Add cart preview if this is a repeat — gives user a final visual confirm of what they're paying for
+        $cartPreview = '';
+        if (!empty($stateData['cart'])) {
+            $cartPreview = "\n\n*Repeating your order:*\n";
+            foreach ($stateData['cart'] as $line) {
+                $cartPreview .= "• {$line['qty']} × {$line['product_name']} — R " . number_format($line['line_total'], 2) . "\n";
+            }
+            $cartPreview .= "*Total: R " . number_format((float) $stateData['cart_total'], 2) . "*\n";
+        }
+
+        return "Delivering to:\n📍 *{$addrLine}*{$cartPreview}\n\n*Reply with:*\n*S* / *Y* - same address\n*D* / *N* - different address";
+    }
+
+    /** Format an addresses-table row as a one-line readable string. */
+    private static function formatAddress(array $addr): string
+    {
+        $parts = [];
+        foreach (['line1', 'line2', 'city'] as $k) {
+            $v = trim((string) ($addr[$k] ?? ''));
+            if ($v !== '') $parts[] = $v;
+        }
+        $line = implode(', ', $parts);
+        $postal = trim((string) ($addr['postal_code'] ?? ''));
+        if ($postal !== '') $line = ($line === '' ? $postal : $line . ' ' . $postal);
+        return $line !== '' ? $line : '(incomplete address on file — please send a new one)';
     }
 
     private static function actShowProductCatalogue(array &$stateData): string
@@ -252,7 +308,7 @@ final class Conversation
 
         $summary = "*Your order:*\n";
         foreach ($resolved['lines'] as $line) {
-            $summary .= "• {$line['quantity']} × {$line['name']} — R " . number_format($line['line_total'], 2) . "\n";
+            $summary .= "• {$line['qty']} × {$line['product_name']} — R " . number_format($line['line_total'], 2) . "\n";
         }
         $summary .= "\n*Total: R " . number_format($resolved['total'], 2) . "*";
 
@@ -262,21 +318,38 @@ final class Conversation
         return "{$summary}\n\nGreat! Now let's confirm delivery.\n\n" . self::actConfirmCurrentAddress($phone, $session, $stateData, $trans);
     }
 
-    private static function actShowSlots(array &$stateData): string
+    private static function actShowSlots(array &$stateData, array &$trans): string
     {
-        $slots = SlotRepo::availableSlots();
-        if (empty($slots)) {
-            return "Sorry, no delivery slots are available right now. Please call 021 492 8515 to arrange.";
+        // Auto-seed slots for the next 14 days if the table has nothing upcoming.
+        // ensureNextNDays is idempotent — re-running just no-ops if already present.
+        try { SlotRepo::ensureNextNDays(14); } catch (Throwable $e) { /* non-fatal */ }
+
+        // SlotRepo::availableSlots() returns wrapped rows: [['letter'=>'A','slot'=>[...row...],'display'=>'...'], ...]
+        // NOT flat slot rows. The 'display' string is already computed.
+        $wrapped = SlotRepo::availableSlots();
+
+        // Always advance to AWAITING_SLOT_SELECTION so the user's next reply (A/B/date)
+        // is recognised by IntentDetector. If we leave state as S_CHECKING_SLOTS the user
+        // gets stuck because the FSM has no transitions out of that intermediate state.
+        $trans['next_step'] = StateMachine::S_AWAITING_SLOT_SELECTION;
+
+        if (empty($wrapped)) {
+            return "Hmm, I can't see any open delivery slots in the next 7 days.\n\n" .
+                   "You can:\n" .
+                   "• Type a specific date (e.g. *28/05/2026*) and I'll check that day\n" .
+                   "• Call us on *021 492 8515* to book directly";
         }
 
-        $first = $slots[0] ?? null;
-        $second = $slots[1] ?? null;
-        $stateData['slot_options'] = array_map(fn($s) => $s['id'], array_slice($slots, 0, 2));
+        // Keep only the first 2 for the A/B prompt
+        $shown = array_slice($wrapped, 0, 2);
+        $stateData['slot_options'] = array_map(fn($w) => (int) ($w['slot']['id'] ?? 0), $shown);
 
         $msg = "*Choose your delivery slot:*\n\n";
-        if ($first)  $msg .= "*A* - " . SlotRepo::displayLabel($first) . "\n";
-        if ($second) $msg .= "*B* - " . SlotRepo::displayLabel($second) . "\n";
-        $msg .= "\nOr type a date (e.g. 23/02/2026) for a different day.";
+        $labels = ['A', 'B'];
+        foreach ($shown as $idx => $w) {
+            $msg .= "*{$labels[$idx]}* - " . ($w['display'] ?? '(slot)') . "\n";
+        }
+        $msg .= "\nOr type a date (e.g. *28/05/2026*) for a different day.";
 
         return $msg;
     }
@@ -322,6 +395,17 @@ final class Conversation
             return "I lost track of who you are — let's start over.\n\n" . self::tplMenu();
         }
 
+        // Defensive: never send R 0 to PayFast. If cart is somehow empty at this point
+        // (lost session, race condition, etc.) route the user back to products instead
+        // of crashing PayFast with "Amount must be a valid payment amount".
+        $cart      = $stateData['cart']       ?? [];
+        $cartTotal = (float) ($stateData['cart_total'] ?? 0);
+        if (empty($cart) || $cartTotal <= 0) {
+            $trans['next_step'] = StateMachine::S_SHOWING_PRODUCTS;
+            log_to_file('whatsapp', 'payment aborted — empty cart', ['phone' => $phone, 'state' => $stateData]);
+            return "Hmm, your cart is empty — let's pick your products.\n\n" . self::tplProductCatalogue();
+        }
+
         try {
             // Create cart-style order, attach lines, address, slot
             $orderId = OrderRepo::createCart($custId, 'whatsapp', false);
@@ -337,14 +421,28 @@ final class Conversation
             }
             OrderRepo::setStatus($orderId, 'pending_payment');
 
-            $order   = OrderRepo::findById($orderId);
-            $payLink = payfast_build_pay_link($order);
+            $order = OrderRepo::findById($orderId);
+            $cust  = CustomerRepo::findById($custId) ?: [];
 
-            log_event('whatsapp.payment.link_sent', null, $phone, ['order_id' => $orderId, 'ref' => $order['order_ref'] ?? null]);
+            // PayFast helper expects an explicit dict with these exact keys —
+            // it does NOT read directly from the orders DB row. Mirroring the
+            // shape used by shop/pay.php.
+            $payLink = payfast_build_pay_link([
+                'order_reference' => (string) ($order['order_reference'] ?? ''),
+                'order_total'     => (float)  ($order['total_amount']   ?? $stateData['cart_total'] ?? 0),
+                'customer_name'   => trim((string) ($cust['full_name'] ?? '')),
+                'customer_email'  => (string) ($cust['email'] ?? ''),
+                'customer_phone'  => (string) ($cust['phone'] ?? $phone),
+            ]);
 
+            $ref   = (string) ($order['order_reference'] ?? '');
             $total = number_format((float) ($order['total_amount'] ?? $stateData['cart_total'] ?? 0), 2);
 
-            return "💳 *Pay securely:*\n{$payLink}\n\nOrder ref: *{$order['order_ref']}*\nTotal: *R {$total}*\n\nOnce paid, you'll get a confirmation here. 🙌";
+            log_event('whatsapp.payment.link_sent', null, $phone, [
+                'order_id' => $orderId, 'ref' => $ref, 'amount' => $total,
+            ]);
+
+            return "💳 *Pay securely:*\n{$payLink}\n\nOrder ref: *{$ref}*\nTotal: *R {$total}*\n\nOnce paid, you'll get a confirmation here. 🙌";
         } catch (Throwable $e) {
             log_to_file('whatsapp', 'payment link generation failed', ['err' => $e->getMessage(), 'phone' => $phone]);
             return "Something went wrong building your payment link. Please reply *Cancel* and try again, or call 021 492 8515.";
@@ -353,38 +451,32 @@ final class Conversation
 
     private static function actCaptureNewCustomer(string $text, string $phone, array &$stateData, array &$trans): string
     {
-        // Parse a 3-line response: name / address / email
         $lines = array_values(array_filter(array_map('trim', explode("\n", $text))));
         if (count($lines) < 2) {
             return "I need at least your name and address. Please send them on separate lines:\n\nJohn Doe\n31 Example Rd, Strand, Cape Town, 7140\njohn@example.com";
         }
 
-        $name = $lines[0] ?? '';
-        $addressLine = $lines[1] ?? '';
-        $email = $lines[2] ?? '';
-
-        $nameParts = explode(' ', trim($name), 2);
-        $firstName = $nameParts[0] ?? '';
-        $lastName  = $nameParts[1] ?? '';
+        $fullName    = trim($lines[0] ?? '');
+        $addressLine = trim($lines[1] ?? '');
+        $email       = trim($lines[2] ?? '');
 
         try {
             $custId = CustomerRepo::create([
-                'phone'      => $phone,
-                'first_name' => $firstName,
-                'last_name'  => $lastName,
-                'email'      => $email,
+                'phone'     => $phone,
+                'full_name' => $fullName,
+                'email'     => $email,
             ]);
 
-            // Split the address line by commas
-            $parts = array_map('trim', explode(',', $addressLine));
-            $street     = $parts[0] ?? '';
-            $suburb     = $parts[1] ?? '';
+            // Split the comma-separated address line into the real schema columns
+            $parts      = array_map('trim', explode(',', $addressLine));
+            $line1      = $parts[0] ?? '';
+            $line2      = $parts[1] ?? '';
             $city       = $parts[2] ?? '';
             $postalCode = $parts[3] ?? ($stateData['postal_code'] ?? '');
 
             $addrId = CustomerRepo::addAddress($custId, [
-                'street'      => $street,
-                'suburb'      => $suburb,
+                'line1'       => $line1,
+                'line2'       => $line2,
                 'city'        => $city,
                 'postal_code' => $postalCode,
                 'is_default'  => 1,
@@ -394,7 +486,8 @@ final class Conversation
             $stateData['address_id']  = $addrId;
             $trans['next_step'] = StateMachine::S_SHOWING_PRODUCTS;
 
-            return "Thanks {$firstName}! You're all set up. ✅\n\n" . self::tplProductCatalogue();
+            $firstName = self::firstName($fullName);
+            return "Thanks" . ($firstName ? " {$firstName}" : '') . "! You're all set up. ✅\n\n" . self::tplProductCatalogue();
         } catch (Throwable $e) {
             log_to_file('whatsapp', 'new customer create failed', ['err' => $e->getMessage()]);
             return "Something went wrong saving your details. Please try again, or call 021 492 8515.";
@@ -436,8 +529,8 @@ final class Conversation
 
         try {
             $addrId = CustomerRepo::addAddress($custId, [
-                'street'      => $lines[0] ?? '',
-                'suburb'      => $lines[1] ?? '',
+                'line1'       => $lines[0] ?? '',
+                'line2'       => $lines[1] ?? '',
                 'city'        => $lines[2] ?? '',
                 'postal_code' => $lines[3] ?? '',
                 'is_default'  => 0,
@@ -473,7 +566,10 @@ final class Conversation
         }
         $msg = "*Our gas cylinders:*\n\n";
         foreach ($items as $it) {
-            $msg .= "*{$it['letter']}* - {$it['name']} — R " . number_format((float) $it['price'], 2) . "\n";
+            $p = $it['product'] ?? [];
+            $name  = $p['name']  ?? '(unnamed)';
+            $price = (float) ($p['price'] ?? 0);
+            $msg .= "*{$it['letter']}* - {$name} — R " . number_format($price, 2) . "\n";
         }
         $msg .= "\n*Reply with the letter + quantity.*\n*Example:* B2  (= 2 × 5kg LPG)";
         return $msg;
@@ -540,10 +636,22 @@ final class Conversation
         $lines = OrderRepo::linesFor((int) $order['id']);
         $summary = '';
         foreach ($lines as $l) {
-            $summary .= "• {$l['quantity']} × {$l['name']}\n";
+            $qty  = $l['qty']          ?? $l['quantity']    ?? '?';
+            $name = $l['product_name'] ?? $l['name']        ?? 'Item';
+            $summary .= "• {$qty} × {$name}\n";
         }
+        if ($summary === '') $summary = "• (line items unavailable)\n";
         $summary .= "Total: R " . number_format((float) ($order['total_amount'] ?? 0), 2);
         return $summary;
+    }
+
+    /** Extract a friendly first name from a full name. Returns '' if blank/unset. */
+    private static function firstName(string $fullName): string
+    {
+        $fullName = trim($fullName);
+        if ($fullName === '') return '';
+        $parts = preg_split('/\s+/', $fullName);
+        return ucfirst(strtolower((string) ($parts[0] ?? '')));
     }
 
     private static function decodeJson($maybe): ?array

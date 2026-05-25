@@ -50,6 +50,7 @@ final class Xero
         'offline_access',                    // refresh tokens (REQUIRED — otherwise re-auth every 30 min)
         'accounting.invoices',               // create + read invoices (granular WRITE)
         'accounting.contacts',               // create + read customers (granular WRITE)
+        'accounting.settings.read',          // read items / org info (catalogue sync)
     ];
 
     // ============= OAuth flow =============
@@ -204,6 +205,119 @@ final class Xero
             throw new RuntimeException('Xero tenant ID missing. Reconnect Xero.');
         }
         return $info['tenant_id'];
+    }
+
+    // ════════════ Domain helpers — high-level wrappers around get()/post() ════════════
+
+    /** Fetch all items from Xero (paginated under the hood — Xero items endpoint is not paginated, returns all). */
+    public static function listItems(): array
+    {
+        $resp = self::get('/Items');
+        return $resp['Items'] ?? [];
+    }
+
+    /** Fetch a single Xero item by ItemID or Code. */
+    public static function getItem(string $itemIdOrCode): ?array
+    {
+        $resp = self::get('/Items/' . rawurlencode($itemIdOrCode));
+        return $resp['Items'][0] ?? null;
+    }
+
+    /**
+     * Find or create a Xero contact for a Hi-Service customer.
+     * Matches first by phone, then by email. Creates with full_name if neither matches.
+     *
+     * @return string The Xero ContactID (UUID).
+     */
+    public static function findOrCreateContact(array $customer): string
+    {
+        $phone = trim((string) ($customer['phone'] ?? ''));
+        $email = strtolower(trim((string) ($customer['email'] ?? '')));
+        $name  = trim((string) ($customer['full_name'] ?? '')) ?: ('+' . $phone);
+
+        // Search by phone first
+        if ($phone !== '') {
+            $resp = self::get('/Contacts?where=' . rawurlencode("Phones.PhoneNumber!=null&&Phones.PhoneNumber=\"{$phone}\""));
+            if (!empty($resp['Contacts'][0]['ContactID'])) return (string) $resp['Contacts'][0]['ContactID'];
+        }
+        // Then by email
+        if ($email !== '') {
+            $resp = self::get('/Contacts?where=' . rawurlencode("EmailAddress=\"{$email}\""));
+            if (!empty($resp['Contacts'][0]['ContactID'])) return (string) $resp['Contacts'][0]['ContactID'];
+        }
+
+        // Create
+        $body = ['Contacts' => [[
+            'Name'         => $name,
+            'EmailAddress' => $email ?: null,
+            'Phones'       => $phone ? [['PhoneType' => 'MOBILE', 'PhoneNumber' => $phone]] : [],
+        ]]];
+        $resp = self::post('/Contacts', $body);
+        return (string) ($resp['Contacts'][0]['ContactID'] ?? '');
+    }
+
+    /**
+     * Create an AUTHORISED invoice in Xero for a paid Hi-Service order.
+     *
+     * @param array $params  ['contact_id','reference','line_items'=>[['code'=>'...','description'=>'...','qty','unit_amount']]]
+     * @return array  ['invoice_id','invoice_number','total','status']
+     */
+    public static function createInvoice(array $params): array
+    {
+        $lines = [];
+        foreach (($params['line_items'] ?? []) as $li) {
+            $lines[] = [
+                'ItemCode'    => (string) ($li['code'] ?? ''),
+                'Description' => (string) ($li['description'] ?? $li['name'] ?? ''),
+                'Quantity'    => (float)  ($li['qty'] ?? 1),
+                'UnitAmount'  => (float)  ($li['unit_amount'] ?? 0),
+                'AccountCode' => (string) ($li['account_code'] ?? '200'),  // 200 = Sales (Xero default)
+            ];
+        }
+
+        $body = ['Invoices' => [[
+            'Type'            => 'ACCREC',                                  // accounts receivable (sales)
+            'Contact'         => ['ContactID' => (string) $params['contact_id']],
+            'Date'            => date('Y-m-d'),
+            'DueDate'         => date('Y-m-d'),                             // gas delivery — paid on delivery
+            'Reference'       => (string) ($params['reference'] ?? ''),
+            'Status'          => 'AUTHORISED',
+            'LineAmountTypes' => 'Inclusive',                               // prices include VAT
+            'LineItems'       => $lines,
+        ]]];
+        $resp = self::post('/Invoices', $body);
+        $inv = $resp['Invoices'][0] ?? [];
+        return [
+            'invoice_id'     => (string) ($inv['InvoiceID']     ?? ''),
+            'invoice_number' => (string) ($inv['InvoiceNumber'] ?? ''),
+            'total'          => (float)  ($inv['Total']         ?? 0),
+            'status'         => (string) ($inv['Status']        ?? ''),
+        ];
+    }
+
+    /** Get the PDF for a Xero invoice. Returns raw PDF bytes. */
+    public static function getInvoicePdf(string $invoiceId): string
+    {
+        $token  = self::getAccessToken();
+        $tenant = self::getTenantId();
+
+        $ch = curl_init(self::API_BASE . '/Invoices/' . rawurlencode($invoiceId));
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER     => [
+                'Authorization: Bearer ' . $token,
+                'Xero-tenant-id: ' . $tenant,
+                'Accept: application/pdf',
+            ],
+            CURLOPT_TIMEOUT => 30,
+        ]);
+        $bytes = curl_exec($ch);
+        $code  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($bytes === false || $code >= 400) {
+            throw new RuntimeException("Xero invoice PDF fetch failed: HTTP {$code}");
+        }
+        return (string) $bytes;
     }
 
     /** Authenticated GET on the Xero accounting API. Path begins with /. */
