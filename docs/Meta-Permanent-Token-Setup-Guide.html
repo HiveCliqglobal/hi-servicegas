@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Meta WhatsApp Permanent Token Setup · HiveCliq · 22 May 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --red:#E60523; --calla:#CD1428; --hibiscus:#E63237; --rose:#EB695F;
+    --gold:#FAC300; --honey:#F59B00; --green:#0F7A52; --teal:#1F6E8C;
+    --ink:#0F0F14; --paper:#FAF8F4; --cream:#F5F0E8; --line:#E5E0D8;
+    --mid:#3A3542; --muted:#6B6679;
+    --fd:'Barlow Condensed', system-ui, sans-serif;
+    --fb:'Barlow', system-ui, sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:#d8d4cc}
+  body{font-family:var(--fb);color:var(--ink);font-size:13.5px;line-height:1.55;-webkit-font-smoothing:antialiased;}
+
+  .page{width:210mm;height:297mm;margin:18px auto;background:var(--paper);box-shadow:0 12px 40px rgba(0,0,0,.18);position:relative;overflow:hidden;page-break-after:always;}
+  .page:last-child{page-break-after:auto}
+  .pad{padding:20mm 17mm 22mm 17mm}
+
+  .brand-bar{position:absolute;left:0;right:0;bottom:0;height:8mm;background:var(--ink);display:flex;align-items:center;justify-content:space-between;padding:0 17mm;color:#fff;font-family:var(--fd);font-weight:600;font-size:9px;letter-spacing:.22em;text-transform:uppercase;}
+  .brand-bar .stripe{position:absolute;left:0;top:0;bottom:0;width:6mm;background:var(--red)}
+  .brand-bar .meta{display:flex;gap:18px;align-items:center}
+  .brand-bar .pn{opacity:.7}
+
+  .kicker{font-family:var(--fd);font-weight:600;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--red);margin:0 0 12px;}
+  h1.display{font-family:var(--fd);font-weight:900;font-size:54px;line-height:.92;letter-spacing:-.02em;text-transform:uppercase;margin:0 0 12px;color:var(--ink);}
+  h1.display em{font-style:normal;color:var(--red);display:block;}
+  h2.section{font-family:var(--fd);font-weight:900;font-size:36px;line-height:.95;letter-spacing:-.02em;text-transform:uppercase;margin:0 0 8px;color:var(--ink);}
+  h2.section em{font-style:normal;color:var(--red)}
+  h3.sub{font-family:var(--fd);font-weight:800;font-size:18px;line-height:1.05;letter-spacing:-.005em;text-transform:uppercase;margin:5mm 0 6px;color:var(--ink);}
+  h4.cardt{font-family:var(--fd);font-weight:800;font-size:14px;text-transform:uppercase;letter-spacing:.005em;line-height:1.15;margin:0 0 5px;color:var(--ink);}
+  p{margin:0 0 8px;color:var(--mid)}
+  p.lead{font-size:14px;line-height:1.5;color:var(--ink)}
+  strong{color:var(--ink);font-weight:600}
+  code{font-family:'SF Mono',Menlo,Consolas,monospace;font-size:10.5px;background:var(--cream);padding:1px 5px;border-radius:3px;color:var(--ink);border:1px solid var(--line)}
+
+  .cover{background:linear-gradient(180deg,#fff 0%, var(--paper) 60%, var(--cream) 100%);position:relative;}
+  .cover .logo{height:38px;display:block;margin-bottom:42px}
+  .cover .lead{max-width:160mm}
+  .cover .meta-grid{position:absolute;left:17mm;right:17mm;bottom:28mm;display:grid;grid-template-columns:repeat(4,1fr);gap:7mm;border-top:1px solid var(--line);padding-top:12px;}
+  .cover .meta-grid .lbl{font-family:var(--fd);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--red);font-weight:600;margin-bottom:4px;}
+  .cover .meta-grid .val{font-family:var(--fb);font-weight:600;color:var(--ink);font-size:13px;line-height:1.25}
+  .cover .meta-grid .val small{display:block;color:var(--muted);font-weight:400;font-size:11.5px;margin-top:2px}
+  .cover-orb{position:absolute;right:-180px;top:-180px;width:520px;height:520px;border-radius:50%;background:radial-gradient(circle at 30% 30%, var(--rose) 0%, var(--hibiscus) 35%, var(--red) 60%, var(--calla) 100%);opacity:.18;filter:blur(2px);}
+
+  .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:7mm;}
+  .stat{border:1px solid var(--line);border-radius:8px;padding:12px;background:#fff;}
+  .stat .num{font-family:var(--fd);font-weight:900;font-size:28px;line-height:1;color:var(--red);margin-bottom:3px;}
+  .stat .lbl{font-family:var(--fd);font-weight:700;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink);}
+  .stat .desc{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4}
+
+  .pull{border-left:4px solid var(--red);padding:12px 14px;background:var(--cream);font-family:var(--fd);font-weight:800;font-size:16px;line-height:1.15;text-transform:uppercase;letter-spacing:-.005em;color:var(--ink);margin:5mm 0 4mm;}
+  .pull em{font-style:normal;color:var(--red)}
+
+  .quote{position:relative;background:#fff;border:1px solid var(--line);border-left:4px solid var(--red);border-radius:0 8px 8px 0;padding:12px 16px;margin:3mm 0;font-family:var(--fb);}
+  .quote .q{font-size:13.5px;line-height:1.4;color:var(--ink);font-weight:500;font-style:italic;margin:0 0 5px}
+  .quote .src{font-family:var(--fd);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .quote .src b{color:var(--ink)}
+
+  .items{display:flex;flex-direction:column;gap:5px;}
+  .item-card{border-left:3px solid var(--red);padding:7px 11px 7px 12px;background:var(--cream);border-radius:0 4px 4px 0;}
+  .item-card h4.cardt{margin-bottom:2px;font-size:13px}
+  .item-card p{font-size:11.8px;margin:0;color:var(--mid);line-height:1.45}
+  .item-card .meta-row{font-family:var(--fd);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-top:4px;}
+  .item-card .meta-row b{color:var(--ink)}
+  .item-card.amber{border-left-color:var(--honey);background:#FFF6E0}
+  .item-card.red{border-left-color:var(--red);background:#FBE8EA}
+  .item-card.green{border-left-color:var(--green);background:#E5F2EC}
+
+  .twocol{display:grid;grid-template-columns:1fr 1fr;gap:5mm;margin-top:4mm;}
+  .threecol{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm;margin-top:4mm;}
+
+  .panel{border:1px solid var(--line);border-radius:8px;padding:12px 13px;background:#fff;margin-bottom:7px;}
+  .panel.inkp{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .panel.inkp h4.cardt{color:#fff}
+  .panel .item{display:flex;gap:8px;align-items:flex-start;margin:4px 0;font-size:11.8px;color:var(--mid);line-height:1.4}
+  .panel .item .dot{flex:0 0 6px;height:6px;border-radius:50%;background:var(--red);margin-top:6px}
+  .panel.inkp .item{color:rgba(255,255,255,.85)}
+  .panel.inkp .item .dot{background:var(--rose)}
+
+  .flow{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:4mm 0 3mm;}
+  .flow .step{background:#fff;border:1px solid var(--line);border-radius:6px;padding:9px 8px;text-align:center;position:relative}
+  .flow .step .n{font-family:var(--fd);font-weight:900;font-size:18px;color:var(--red);line-height:1}
+  .flow .step .t{font-family:var(--fd);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink);margin:4px 0 2px}
+  .flow .step .d{font-size:10.5px;color:var(--muted);line-height:1.35}
+
+  table.matrix{width:100%;border-collapse:collapse;margin-top:4mm;font-size:11.5px;}
+  table.matrix th{background:var(--ink);color:#fff;font-family:var(--fd);font-weight:700;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;padding:7px 9px;text-align:left;}
+  table.matrix td{padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--mid);line-height:1.4}
+  table.matrix tr:nth-child(even) td{background:#fff}
+  table.matrix tr:nth-child(odd) td{background:var(--cream)}
+  table.matrix td b{color:var(--ink)}
+  table.matrix .sev{font-family:var(--fd);font-weight:800;font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:3px;display:inline-block;color:#fff}
+  table.matrix .sev.hi{background:var(--red)}
+  table.matrix .sev.md{background:var(--honey)}
+  table.matrix .sev.lo{background:var(--green)}
+
+  .signoff{background:var(--red);color:#fff;border-radius:10px;padding:16px 20px;margin-top:5mm;display:grid;grid-template-columns:1.4fr 1fr;gap:16px;align-items:center;}
+  .signoff h3{color:#fff;margin:0 0 4px;font-family:var(--fd);font-weight:900;font-size:20px;text-transform:uppercase;line-height:1;}
+  .signoff p{color:rgba(255,255,255,.92);font-size:12.5px;margin:0;line-height:1.45}
+  .signoff .ctaright{text-align:right;font-size:12.5px;line-height:1.5}
+  .signoff .ctaright b{display:block;margin-bottom:2px}
+
+  @page { size: A4; margin: 0; }
+  @media print{ html,body{background:#fff} .page{margin:0;box-shadow:none;width:210mm;height:297mm} }
+</style>
+</head>
+<body>
+
+<!-- ====================== PAGE 1 — COVER ====================== -->
+<section class="page cover">
+  <div class="cover-orb"></div>
+  <div class="pad">
+    <div class="logo" aria-label="HiveCliq">
+      <svg viewBox="0 0 649 129" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMid meet" style="height:100%;width:auto;display:block">
+        <g transform="matrix(1,0,0,1,-96.9568,-233.313)"><g transform="matrix(1.3596,0,0,1.3596,-124.917,-169.521)"><g><g transform="matrix(0.708211,0,0,0.708211,-46.5342,89.7536)"><g transform="matrix(1,0,0,1,0,93.293)"><path d="M512.65,258.666C514.419,249.378 520.462,244.219 529.454,244.219C538.742,244.219 545.228,249.674 546.847,258.666L512.65,258.666ZM566.16,265.74C566.16,243.777 550.975,228.446 529.159,228.446C508.079,228.446 493.19,243.481 493.19,264.856C493.19,286.085 508.668,301.413 530.339,301.413C544.786,301.413 556.726,293.896 563.505,280.63L546.258,275.913C543.31,281.368 537.413,284.758 530.485,284.758C521.2,284.758 514.27,278.861 512.65,269.427L566.011,269.427L566.16,265.74ZM455.609,271.491L440.573,230.806L421.114,230.806L445.733,299.056L465.043,299.056L489.955,230.806L470.791,230.806L455.609,271.491ZM402.843,200.881C396.799,200.881 392.375,205.302 392.375,211.346C392.375,217.243 396.799,221.667 402.843,221.667C408.737,221.667 413.161,217.243 413.161,211.495C413.161,205.302 408.886,200.881 402.843,200.881M353.623,242.304L316.328,242.304L316.328,200.734L296.133,200.734L296.133,299.056L316.328,299.056L316.328,258.812L353.623,258.812L353.623,299.056L373.817,299.056L373.817,200.734L353.623,200.734L353.623,242.304ZM393.408,299.056L412.127,299.056L412.127,230.806L393.408,230.806L393.408,299.056Z" style="fill-rule:nonzero"/></g><g transform="matrix(1,0,0,1,0,121.599)"><path d="M764.681,265.002C750.53,265.002 740.803,253.65 740.803,236.992C740.803,220.188 750.679,208.69 764.977,208.69C771.02,208.69 777.36,211.492 781.781,215.913C786.352,220.926 788.709,227.854 788.709,237.288C788.709,253.946 779.128,265.002 764.681,265.002M789.151,202.942L789.151,216.501C782.961,206.333 775.442,201.762 764.681,201.762C745.52,201.762 733.137,215.175 733.137,236.257C733.137,246.133 735.494,254.684 739.623,260.135C745.37,267.506 754.363,271.93 763.946,271.93C774.557,271.93 782.223,267.506 789.151,257.336L789.151,303.181L796.524,303.181L796.524,202.942L789.151,202.942ZM710.881,178.323C707.786,178.323 705.28,180.829 705.28,183.927C705.28,187.022 707.786,189.528 710.881,189.528C713.83,189.528 716.336,187.022 716.336,184.073C716.336,180.829 713.979,178.323 710.881,178.323M707.051,270.75L714.421,270.75L714.421,202.942L707.051,202.942L707.051,270.75ZM675.068,270.75L682.438,270.75L682.438,172.429L675.068,172.429L675.068,270.75ZM623.342,178.323C630.27,178.323 637.493,180.537 643.095,184.369C646.043,186.43 648.254,188.348 652.675,193.212L658.868,188.199C649.284,176.262 637.786,170.66 623.342,170.66C596.808,170.66 577.201,192.327 577.201,221.664C577.201,235.37 582.065,248.933 590.173,258.221C598.43,267.506 610.075,272.519 623.489,272.519C631.743,272.519 640,270.454 646.632,266.475C651.644,263.526 654.443,261.02 658.868,254.976L652.675,249.525C644.125,260.285 635.429,264.852 623.784,264.852C601.967,264.852 585.898,246.722 585.898,221.81C585.898,196.749 601.821,178.323 623.342,178.323" style="fill:rgb(230,5,35);fill-rule:nonzero"/></g></g><g transform="matrix(0.299778,0,0,0.299778,537.846,287.002)"><g transform="matrix(1,0,0,1,0,-329.175)"><path d="M144.709,471.569L160.735,499.327C164.031,505.041 170.178,508.59 176.775,508.59L208.828,508.59C215.426,508.59 221.572,505.041 224.869,499.327L240.894,471.569C244.193,465.856 244.193,458.759 240.894,453.047L224.869,425.288C221.57,419.574 215.424,416.025 208.828,416.025L176.775,416.025C170.18,416.025 164.034,419.574 160.735,425.288L144.709,453.047C141.41,458.759 141.41,465.856 144.709,471.569" style="fill:rgb(230,5,35);fill-rule:nonzero"/></g><g transform="matrix(1,0,0,1,0,-217.433)"><path d="M63.866,443.458C67.162,449.168 73.309,452.717 79.906,452.717L111.959,452.717C118.557,452.717 124.703,449.168 128,443.458L144.025,415.7C147.324,409.985 147.324,402.888 144.025,397.176L128,369.417C124.703,363.705 118.555,360.156 111.959,360.156L79.906,360.156C73.31,360.156 67.162,363.705 63.866,369.417L47.84,397.176C44.541,402.888 44.541,409.985 47.84,415.7L63.866,443.458Z" style="fill:rgb(230,5,35);fill-rule:nonzero"/></g><g transform="matrix(1,0,0,1,0,-440.915)"><path d="M63.866,555.198C67.162,560.911 73.31,564.459 79.906,564.459L111.959,564.459C118.555,564.459 124.703,560.911 128,555.198L144.025,527.44C147.324,521.726 147.324,514.628 144.025,508.916L128,481.157C124.703,475.445 118.555,471.896 111.959,471.896L79.906,471.896C73.31,471.896 67.162,475.445 63.866,481.157L47.84,508.916C44.541,514.628 44.541,521.726 47.84,527.44L63.866,555.198Z" style="fill:rgb(230,5,35);fill-rule:nonzero"/></g><g transform="matrix(1,0,0,1,0,-217.435)"><path d="M337.643,397.177L321.616,369.419C318.319,363.705 312.173,360.156 305.575,360.156L273.524,360.156C266.926,360.156 260.78,363.705 257.483,369.419L241.456,397.177C238.157,402.89 238.157,409.987 241.456,415.701L257.483,443.46C260.78,449.17 266.926,452.719 273.524,452.719L305.575,452.719C312.173,452.719 318.319,449.17 321.616,443.46L337.643,415.701C340.942,409.987 340.942,402.89 337.643,397.177" style="fill:rgb(230,5,35);fill-rule:nonzero"/></g><g transform="matrix(1,0,0,1,0,6.051)"><path d="M128,257.677C124.703,251.963 118.557,248.414 111.959,248.414L79.907,248.414C73.309,248.414 67.163,251.963 63.866,257.677L47.84,285.435C44.541,291.149 44.541,298.243 47.84,303.957L63.866,331.716C67.163,337.426 73.309,340.975 79.907,340.975L111.959,340.975C118.557,340.975 124.703,337.426 128,331.716L144.026,303.957C147.324,298.243 147.324,291.149 144.026,285.435L128,257.677Z" style="fill:rgb(230,5,35);fill-rule:nonzero"/></g><g transform="matrix(1,0,0,1,0,-105.691)"><path d="M224.869,313.546C221.57,307.832 215.424,304.283 208.828,304.283L176.775,304.283C170.18,304.283 164.034,307.832 160.735,313.546L144.709,341.305C141.41,347.019 141.41,354.112 144.709,359.827L160.735,387.585C164.034,393.299 170.18,396.848 176.775,396.848L208.828,396.848C215.424,396.848 221.57,393.299 224.869,387.585L240.894,359.827C244.193,354.112 244.193,347.019 240.894,341.305L224.869,313.546Z" style="fill:rgb(230,5,35);fill-rule:nonzero"/></g></g></g></g></g>
+      </svg>
+    </div>
+
+    <p class="kicker">WhatsApp Cloud API · Setup Guide · May 2026</p>
+    <h1 class="display">Meta System User<br><em>Permanent Token</em></h1>
+    <p class="lead">A 10-minute, one-time playbook that gets the Hi-Service Gas WhatsApp ordering bot a production-grade access token. Verified against current 2026 Meta Business Suite UI and three independent community references. Follow the seven steps and the token never expires again.</p>
+
+    <div class="summary">
+      <div class="stat"><div class="num">10 MIN</div><div class="lbl">Setup time</div><div class="desc">Click-by-click, start to finish</div></div>
+      <div class="stat"><div class="num">FOREVER</div><div class="lbl">Token expiry</div><div class="desc">No 24-hour resets, no monthly renewals</div></div>
+      <div class="stat"><div class="num">R 0</div><div class="lbl">Monthly cost</div><div class="desc">Meta-issued, no third-party fees</div></div>
+      <div class="stat"><div class="num">1 ×</div><div class="lbl">Done forever</div><div class="desc">Never touch this UI again post-setup</div></div>
+    </div>
+
+    <div class="meta-grid">
+      <div><div class="lbl">Prepared for</div><div class="val">Hi-Service Gas<small>WhatsApp ordering rebuild</small></div></div>
+      <div><div class="lbl">Prepared by</div><div class="val">Shawn Lochner<small>HiveCliq (Pty) Ltd</small></div></div>
+      <div><div class="lbl">Document type</div><div class="val">Technical guide<small>Operational reference</small></div></div>
+      <div><div class="lbl">Status</div><div class="val">Active<small>22 May 2026</small></div></div>
+    </div>
+  </div>
+  <div class="brand-bar"><div class="stripe"></div><div>Meta Permanent Token Setup · Hi-Service Gas</div><div class="meta"><span>www.hivecliq.com</span><span class="pn">01 / 05</span></div></div>
+</section>
+
+
+<!-- ====================== PAGE 2 — WHY + PRE-FLIGHT ====================== -->
+<section class="page">
+  <div class="pad">
+    <p class="kicker">Why permanent · Pre-flight</p>
+    <h2 class="section">The temp token <em>dies in 24 hours</em></h2>
+    <p class="lead">Meta's developer dashboard issues a temporary token labelled "24 hours" on the WhatsApp API Setup page. In practice that token starts returning HTTP 401 the moment its 24-hour window closes — and every outbound message stops dead until it's replaced. Production WhatsApp ordering cannot run on temp tokens. The fix is one System User token, generated once, that never expires.</p>
+
+    <div class="quote">
+      <p class="q">"Error validating access token: Session has expired on Friday, 22-May-26 00:00:00 PDT. The current time is Friday, 22-May-26 00:14:01 PDT."</p>
+      <p class="src"><b>Meta Graph API</b> · error code 190 · subcode 463 · returned to Hi-Service Chatbot during outbound echo test</p>
+    </div>
+
+    <h3 class="sub">Before you start, confirm these three things exist</h3>
+    <div class="items">
+      <div class="item-card green">
+        <h4 class="cardt">1 · Business Manager with Hi-Service inside it</h4>
+        <p>The business.facebook.com dropdown shows a business that owns the WhatsApp app. Already set up in this case — Hi-Service Orders app was created here.</p>
+      </div>
+      <div class="item-card green">
+        <h4 class="cardt">2 · "Hi-Service Orders" app with WhatsApp product added</h4>
+        <p>The app exists at developer.facebook.com under the Hi-Service business. Use case "Connect with customers through WhatsApp" already selected. Already set up.</p>
+      </div>
+      <div class="item-card green">
+        <h4 class="cardt">3 · A WABA visible in the WhatsApp app's API Setup page</h4>
+        <p>"Test WhatsApp Business Account" (id 1357146642926345) provisioned by Meta. The sandbox phone +1 555-629-8543 is its From-number. Already verified working.</p>
+        <div class="meta-row"><b>State:</b> ready to generate the permanent token</div>
+      </div>
+    </div>
+
+    <div class="pull">A token generated WITHOUT the WABA asset assigned returns 401 <em>even when the token looks valid.</em></div>
+  </div>
+  <div class="brand-bar"><div class="stripe"></div><div>Why permanent · Pre-flight</div><div class="meta"><span>www.hivecliq.com</span><span class="pn">02 / 05</span></div></div>
+</section>
+
+
+<!-- ====================== PAGE 3 — STEPS 1-3: NAVIGATE + CREATE + ASSIGN ====================== -->
+<section class="page">
+  <div class="pad">
+    <p class="kicker">Steps 1 – 3 · Navigate, Create, Assign</p>
+    <h2 class="section">System user <em>and its assets</em></h2>
+    <p class="lead">The first three steps build the system user and grant it the two assets it needs. Asset assignment is the step almost everyone misses — without it, the Generate Token button stays greyed out, and even if you manage to generate a token it returns 401 on every Graph API call.</p>
+
+    <div class="flow">
+      <div class="step"><div class="n">1</div><div class="t">Open</div><div class="d">business.facebook.com /settings</div></div>
+      <div class="step"><div class="n">2</div><div class="t">Navigate</div><div class="d">Users → System Users</div></div>
+      <div class="step"><div class="n">3</div><div class="t">Add User</div><div class="d">Name: hi-service-server · Role: Admin</div></div>
+      <div class="step"><div class="n">4</div><div class="t">Assign WABA</div><div class="d">Full Control on the Hi-Service WABA</div></div>
+      <div class="step"><div class="n">5</div><div class="t">Assign App</div><div class="d">Full Control on Hi-Service Orders</div></div>
+    </div>
+
+    <h3 class="sub">Asset assignment — the step everyone misses</h3>
+    <div class="twocol">
+      <div class="panel">
+        <h4 class="cardt">3A · WhatsApp Account asset</h4>
+        <div class="item"><span class="dot"></span>Click <b>Add assets</b> on the system user detail page</div>
+        <div class="item"><span class="dot"></span>Left column: <b>WhatsApp Accounts</b></div>
+        <div class="item"><span class="dot"></span>Tick the WABA + toggle <b>Full control</b> ON</div>
+        <div class="item"><span class="dot"></span>Save changes</div>
+      </div>
+      <div class="panel">
+        <h4 class="cardt">3B · App asset</h4>
+        <div class="item"><span class="dot"></span>Click <b>Add assets</b> again</div>
+        <div class="item"><span class="dot"></span>Left column: <b>Apps</b></div>
+        <div class="item"><span class="dot"></span>Tick <b>Hi-Service Orders</b> + Full control ON</div>
+        <div class="item"><span class="dot"></span>Save changes</div>
+      </div>
+      <div class="panel">
+        <h4 class="cardt">Why both?</h4>
+        <div class="item"><span class="dot"></span><b>WABA</b> grants the token permission to act on WhatsApp</div>
+        <div class="item"><span class="dot"></span><b>App</b> grants the token an identity (the App ID it acts as)</div>
+        <div class="item"><span class="dot"></span>One without the other → 401 errors</div>
+      </div>
+      <div class="panel inkp">
+        <h4 class="cardt">Verify before continuing</h4>
+        <div class="item"><span class="dot"></span>Generate New Token button should now be <b>active</b> (blue, not grey)</div>
+        <div class="item"><span class="dot"></span>If still grey: an asset didn't save — re-do 3A or 3B</div>
+        <div class="item"><span class="dot"></span>Only move to page 4 once it's active</div>
+      </div>
+    </div>
+  </div>
+  <div class="brand-bar"><div class="stripe"></div><div>Steps 1–3 · Navigate, Create, Assign</div><div class="meta"><span>www.hivecliq.com</span><span class="pn">03 / 05</span></div></div>
+</section>
+
+
+<!-- ====================== PAGE 4 — STEPS 4-6: GENERATE + COPY + SAVE ====================== -->
+<section class="page">
+  <div class="pad">
+    <p class="kicker">Steps 4 – 6 · Generate, Copy, Save</p>
+    <h2 class="section">The token <em>live for years</em></h2>
+    <p class="lead">With both assets assigned, the Generate Token dialog now offers the scopes we need. Pick the right four settings, copy the token once, paste into the Hi-Service admin panel.</p>
+
+    <div class="flow">
+      <div class="step"><div class="n">1</div><div class="t">Click</div><div class="d">Generate New Token (now active)</div></div>
+      <div class="step"><div class="n">2</div><div class="t">Pick app</div><div class="d">Hi-Service Orders</div></div>
+      <div class="step"><div class="n">3</div><div class="t">Expiration</div><div class="d">Never (do not pick 60 days)</div></div>
+      <div class="step"><div class="n">4</div><div class="t">Tick scopes</div><div class="d">whatsapp_business_messaging + management</div></div>
+      <div class="step"><div class="n">5</div><div class="t">Generate</div><div class="d">Token appears with Copy button</div></div>
+    </div>
+
+    <h3 class="sub">Copy → Verify → Paste — get this exact sequence right</h3>
+    <div class="items">
+      <div class="item-card">
+        <h4 class="cardt">Step 5 · Copy with Meta's button, not the keyboard</h4>
+        <p>Click Meta's <b>Copy</b> button inside the dialog. Do NOT triple-click + Cmd-C — keyboard selection sometimes captures an invisible line break that Meta's API will silently reject. Token starts with <code>EAA…</code> and is ~200–300 characters.</p>
+      </div>
+      <div class="item-card amber">
+        <h4 class="cardt">Step 6a · Verify the paste before saving</h4>
+        <p>Open TextEdit / Sticky / a Gmail draft → paste → confirm: one unbroken string, starts with <code>EAA</code>, no spaces, no line breaks. If anything looks off, generate a new token (no penalty).</p>
+        <div class="meta-row"><b>Critical:</b> closing Meta's dialog without copying loses the token forever</div>
+      </div>
+      <div class="item-card">
+        <h4 class="cardt">Step 6b · Paste into Hi-Service admin</h4>
+        <p>Open <code>hiservice.store/admin/connections.php</code> → Meta WhatsApp card → click <b>Update Meta credentials</b> → System User Token field → <b>Cmd+A → Delete → Paste</b> the new token → <b>Save Meta</b>. The field is pre-filled with the OLD dead token's masked dots — overwriting is essential.</p>
+      </div>
+    </div>
+  </div>
+  <div class="brand-bar"><div class="stripe"></div><div>Steps 4–6 · Generate, Copy, Save</div><div class="meta"><span>www.hivecliq.com</span><span class="pn">04 / 05</span></div></div>
+</section>
+
+
+<!-- ====================== PAGE 5 — TROUBLESHOOTING + SIGN-OFF ====================== -->
+<section class="page">
+  <div class="pad">
+    <p class="kicker">Step 7 · Troubleshooting · Verification</p>
+    <h2 class="section">If something <em>goes wrong</em></h2>
+    <p class="lead">Once saved, ping the build session with "saved" — a 4-endpoint Graph API probe runs immediately to verify the token works before any real message is sent. If a snag does come up earlier, the table below maps the symptom to the exact step that fixes it.</p>
+
+    <table class="matrix">
+      <thead>
+        <tr><th style="width:28%">Snag</th><th style="width:12%">Severity</th><th style="width:32%">What it means</th><th style="width:28%">Fix</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Generate Token button stays greyed out</b></td>
+          <td><span class="sev hi">High</span></td>
+          <td>Asset assignment didn't complete — token cannot be generated against zero assets.</td>
+          <td>Re-do Step 3A and 3B. The button activates only after both assets save.</td>
+        </tr>
+        <tr>
+          <td><b>Only <code>whatsapp_business_management</code> visible, no <code>_messaging</code></b></td>
+          <td><span class="sev hi">High</span></td>
+          <td>WABA was assigned but without full control — Meta only grants management-level scopes.</td>
+          <td>Step 3A again. Toggle <b>Full control</b> ON (or both "Manage WhatsApp Business" and "Manage phone numbers and messages").</td>
+        </tr>
+        <tr>
+          <td><b>App dropdown empty in the Generate dialog</b></td>
+          <td><span class="sev hi">High</span></td>
+          <td>The app asset was never assigned to the system user.</td>
+          <td>Step 3B. Add Hi-Service Orders as an Apps asset with Full control.</td>
+        </tr>
+        <tr>
+          <td><b>Token saved but still 401 on test</b></td>
+          <td><span class="sev md">Med</span></td>
+          <td>Either a line break got into the paste, or the field still holds the old dead token's value.</td>
+          <td>Step 6b again. Cmd+A to clear first, then paste. Verify prefix differs from <code>EAAbZBpyiPS3UBRpy…</code></td>
+        </tr>
+        <tr>
+          <td><b>"You don't have permission" page</b></td>
+          <td><span class="sev md">Med</span></td>
+          <td>You're not Admin on the Business Portfolio that owns the app.</td>
+          <td>Business Settings → Business Info → check who has Admin. Ask owner to elevate, or use their account.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="signoff">
+      <div>
+        <h3>Standing by for "saved"</h3>
+        <p>Once Step 6b is done, ping the active build session with the word "saved" and the 4-endpoint probe runs immediately. If all 4 return HTTP 200, you reply "hi" to +1 555-629-8543 and the echo arrives within five seconds — closing the inbound to outbound WhatsApp loop.</p>
+      </div>
+      <div class="ctaright">
+        <b>Shawn Lochner</b>
+        Founder · HiveCliq (Pty) Ltd<br>
+        shawn@hivecliq.com · +27 83 460 3414
+      </div>
+    </div>
+  </div>
+  <div class="brand-bar"><div class="stripe"></div><div>Troubleshooting · Verification</div><div class="meta"><span>www.hivecliq.com</span><span class="pn">05 / 05</span></div></div>
+</section>
+
+</body>
+</html>

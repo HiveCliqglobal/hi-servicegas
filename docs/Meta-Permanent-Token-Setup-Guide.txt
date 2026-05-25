@@ -1,0 +1,312 @@
+================================================================================
+  META WHATSAPP PERMANENT TOKEN — SETUP GUIDE
+  Hi-Service Gas · WhatsApp ordering rebuild
+  Prepared by HiveCliq · 22 May 2026
+================================================================================
+
+A 10-minute, one-time playbook that gets the Hi-Service Gas WhatsApp ordering
+bot a production-grade access token. Verified against current 2026 Meta
+Business Suite UI and three independent community references. Follow the
+seven steps below and the token never expires again.
+
+  Setup time ...... 10 minutes
+  Token expiry .... Never
+  Monthly cost .... R 0
+  Frequency ....... 1× (never repeat post-setup)
+
+
+--------------------------------------------------------------------------------
+  WHY THIS IS NEEDED
+--------------------------------------------------------------------------------
+
+Meta's developer dashboard issues a TEMPORARY token labelled "24 hours" on
+the WhatsApp API Setup page. In practice that token starts returning HTTP 401
+the moment its 24-hour window closes — and every outbound message stops dead
+until it's replaced. Production WhatsApp ordering cannot run on temp tokens.
+
+The fix is one SYSTEM USER TOKEN, generated once, that never expires.
+
+Verbatim from Meta's Graph API (returned to Hi-Service Chatbot during
+outbound echo test on 22 May 2026):
+
+    "Error validating access token: Session has expired on
+     Friday, 22-May-26 00:00:00 PDT. The current time is
+     Friday, 22-May-26 00:14:01 PDT."
+     -- error code 190, subcode 463
+
+
+--------------------------------------------------------------------------------
+  BEFORE YOU START — confirm these three things exist
+--------------------------------------------------------------------------------
+
+[done]  1. Business Manager with Hi-Service inside it
+        business.facebook.com shows the Hi-Service business in the top-left
+        dropdown. Already set up — Hi-Service Orders app lives here.
+
+[done]  2. "Hi-Service Orders" app with WhatsApp product added
+        Created at developer.facebook.com under the Hi-Service business.
+        Use case "Connect with customers through WhatsApp" already selected.
+
+[done]  3. A WABA visible in the WhatsApp app's API Setup page
+        "Test WhatsApp Business Account" (id 1357146642926345) provisioned
+        by Meta. Sandbox phone +1 555-629-8543 is its From-number.
+
+All three pre-flight items are already complete. Proceed to step 1.
+
+
+================================================================================
+  STEP 1 — NAVIGATE TO SYSTEM USERS
+================================================================================
+
+Open this URL in a browser, logged in to your Facebook account:
+
+    https://business.facebook.com/settings
+
+Confirm the top-left dropdown shows the Hi-Service business (not your personal
+Facebook profile). Switch via the dropdown if needed.
+
+In the LEFT SIDEBAR, find the "Users" section and click:
+
+    Users  →  System users
+
+(NOT "People" — that's for human users.)
+
+You'll see a list of system users (probably empty or with one entry).
+
+
+================================================================================
+  STEP 2 — CREATE THE SYSTEM USER
+================================================================================
+
+Click the blue "+ Add" button at the top-right of the list.
+
+A dialog opens. Fill in:
+
+    System user name ...... hi-service-server
+    System user role ...... Admin   (NOT Employee)
+
+Click "Create system user". Meta may ask you to confirm with your Facebook
+password — enter it.
+
+The dialog closes and "hi-service-server" appears in the list. Click on it
+to open its detail page.
+
+
+================================================================================
+  STEP 3 — ASSIGN ASSETS  ⚠ DO NOT SKIP — token will 401 without this
+================================================================================
+
+You're on the system user's detail page. The "Generate new token" button at
+the top is GREYED OUT — that's expected. It unlocks after you assign assets.
+
+Find the "Assigned assets" section. Click "+ Add assets" — a side panel
+slides in from the right.
+
+  ------------------------------------------------------------------
+  3A.  ASSIGN THE WHATSAPP BUSINESS ACCOUNT
+  ------------------------------------------------------------------
+
+    LEFT column ........ click "WhatsApp Accounts"
+    MIDDLE column ...... tick the WABA called "Test WhatsApp
+                         Business Account"
+    RIGHT column ....... toggle ON "Full control"
+                         (or both: "Manage WhatsApp Business Account"
+                          AND "Manage phone numbers and messages")
+    Save changes
+
+
+  ------------------------------------------------------------------
+  3B.  ASSIGN THE APP
+  ------------------------------------------------------------------
+
+  The side panel may close after the save. If so, click "+ Add assets" again.
+
+    LEFT column ........ click "Apps"
+    MIDDLE column ...... tick "Hi-Service Orders"
+    RIGHT column ....... toggle ON "Full control"
+                         (or both: "Develop App" AND "Manage app")
+    Save changes
+
+
+  ------------------------------------------------------------------
+  WHY BOTH ASSETS?
+  ------------------------------------------------------------------
+
+    WABA  ........ grants the token PERMISSION to act on WhatsApp
+    App  ......... grants the token an IDENTITY (the App ID it acts as)
+
+  One without the other = 401 errors on every Graph API call.
+
+
+  ------------------------------------------------------------------
+  VERIFY BEFORE CONTINUING
+  ------------------------------------------------------------------
+
+  The "Generate New Token" button should now be ACTIVE (blue, not grey).
+  If still grey, one asset didn't save — re-do 3A or 3B.
+  Only move to Step 4 once it's active.
+
+
+================================================================================
+  STEP 4 — GENERATE THE TOKEN
+================================================================================
+
+Still on the system user's detail page, click "Generate new token".
+
+A dialog opens with these fields:
+
+    App ................. Hi-Service Orders
+                          (auto-selected since it's the only assigned app)
+
+    Token expiration .... Never
+                          (other option is "60 days" — DO NOT pick that)
+
+    Available permissions:
+        [x]  whatsapp_business_messaging
+        [x]  whatsapp_business_management
+
+        Leave EVERY OTHER scope unticked.
+        Do NOT tick catalog_management or anything else.
+
+If the "whatsapp_business_messaging" checkbox is NOT visible at all,
+your WABA wasn't assigned with full control. Go back to step 3A.
+
+Click "Generate token" at the bottom.
+
+
+================================================================================
+  STEP 5 — COPY THE TOKEN (one shot — close dialog = token lost)
+================================================================================
+
+Meta displays the token in a dialog with a "Copy" button.
+
+  The token starts with: EAA...
+  Length: approximately 200–300 characters
+
+DO THIS IN THIS EXACT ORDER:
+
+  1. Click Meta's "Copy" button.
+     (Do NOT triple-click + Cmd-C — keyboard selection sometimes
+      injects an invisible line break that breaks the API call.)
+
+  2. Open TextEdit / Stickies / a Gmail draft.
+
+  3. Paste. Verify:
+       - One unbroken string
+       - Starts with EAA
+       - No spaces, no line breaks
+
+  4. Once verified, close the Meta dialog.
+
+⚠ IF YOU CLOSE THE META DIALOG WITHOUT COPYING — THE TOKEN IS GONE FOREVER.
+  You'd have to generate a new one. No penalty, just annoying.
+
+
+================================================================================
+  STEP 6 — PASTE INTO HI-SERVICE ADMIN
+================================================================================
+
+Open this URL (log in with shawn / 3bC9WQwSsDiFpQ if prompted):
+
+    https://hiservice.store/admin/connections.php
+
+In the "Meta WhatsApp" card, click "Update Meta credentials" to expand the
+form.
+
+The "System User Token" field is pre-filled with masked dots representing
+the OLD dead token. You MUST clear it first.
+
+  1. Click into the field
+  2. Press Cmd+A     (select all)
+  3. Press Delete    (clear)
+  4. Paste your new token
+  5. Eye-check that the field now ends with the suffix you copied
+     (compare to your Sticky / TextEdit copy)
+  6. Click "Save Meta" at the bottom
+
+You should see a green flash: "✓ Meta WhatsApp credentials saved."
+
+
+================================================================================
+  STEP 7 — VERIFY + TEST
+================================================================================
+
+Reply to the active build session with the word "saved".
+
+The build will instantly run a 4-endpoint Graph API probe to verify the
+new token works:
+
+    1. GET /me                     - token introspection
+    2. GET /debug_token            - permissions check
+    3. GET /<WABA_ID>              - WABA read access
+    4. GET /<PHONE_NUMBER_ID>      - phone number read access
+
+If all 4 return HTTP 200, send any WhatsApp message ("hi" works) to:
+
+    +1 555-629-8543
+
+The Hi-Service bot will echo it back within ~5 seconds — closing the full
+inbound → outbound WhatsApp loop and confirming the production token works.
+
+
+================================================================================
+  TROUBLESHOOTING
+================================================================================
+
+  SYMPTOM                                  | FIX
+  -----------------------------------------|----------------------------------
+  Generate Token button stays greyed out   | Step 3 not done — assets must be
+  (HIGH severity)                          | assigned BEFORE generating.
+
+  Only whatsapp_business_management        | WABA assigned but without full
+  visible, no _messaging                   | control. Go back to 3A, toggle
+  (HIGH severity)                          | Full control ON.
+
+  App dropdown empty in Generate dialog    | App not assigned to system user.
+  (HIGH severity)                          | Step 3B.
+
+  Token saved but still 401 on test        | Either line break in paste, OR
+  (MEDIUM severity)                        | the field still holds the old
+                                           | token. Re-do Step 6, Cmd+A first.
+
+  "You don't have permission" page         | Not Admin on the Business
+  (MEDIUM severity)                        | Portfolio. Business Settings →
+                                           | Business Info → check Admin list.
+
+
+================================================================================
+  CONTACT
+================================================================================
+
+  Shawn Lochner
+  Founder · HiveCliq (Pty) Ltd
+  shawn@hivecliq.com
+  +27 83 460 3414
+  www.hivecliq.com
+
+
+================================================================================
+  SOURCES
+================================================================================
+
+  - Meta for Developers — System User Access Token documentation
+    https://developers.facebook.com/documentation/business-messaging/whatsapp/access-tokens/
+
+  - Anjok Technologies — WhatsApp Cloud API Permanent Access Token Step-by-Step
+    Guide (System User) 2026
+    https://anjoktechnologies.in/blog/-whatsapp-cloud-api-permanent-access-token-step-by-step-system-user-2026-complete-correct-guide-by-anjok-technologies
+
+  - CraftedSilicon — How to Create a Permanent WhatsApp Business Cloud API
+    Token That Never Expires (June 2025)
+    https://craftedsilicon.com/how-to-create-a-permanent-whatsapp-business-cloud-api-token-that-never-expires-68b084a9fb899a001be27d54/
+
+  - Notiqoo — How To Generate A Permanent Token For WhatsApp Cloud API
+    https://notiqoo.com/docs/notiqoo-pro/related-guides/how-to-generate-a-permanent-token-for-whatsapp-cloud-api/
+
+
+--------------------------------------------------------------------------------
+Document: Meta WhatsApp Permanent Token Setup
+Client:   Hi-Service Gas
+Author:   HiveCliq · Shawn Lochner
+Date:     22 May 2026
+--------------------------------------------------------------------------------

@@ -1,0 +1,313 @@
+================================================================================
+  META / WHATSAPP HANDOVER REQUEST
+  From: Shawn Lochner · HiveCliq
+  For:  Karl (imappliedseo · n8n admin)
+  Re:   Hi-Service Gas WhatsApp ordering rebuild
+  Date: 22 May 2026
+================================================================================
+
+Hi Karl,
+
+We're rebuilding the Hi-Service Gas WhatsApp ordering bot. The new system
+runs at hiservice.store (PHP + MySQL on cPanel) and replaces the existing
+n8n flow on n8n.imappliedseo.com. The old n8n stays running unchanged
+during the build — only the Meta side of the connection is shared.
+
+Cutover plan: TEST phase first (Meta sandbox, no impact on n8n or live
+customers), then LIVE switchover once everything passes UAT. Old n8n stays
+on standby for 7 days post-cutover as rollback.
+
+The blocker right now is that the Hi-Service Business Manager only allows
+ONE system user (unverified BM limit), and that slot is already used by the
+n8n bot. We don't want to delete that — n8n must keep running. The fix is
+to reuse the same system user, but generate a SECOND, INDEPENDENT token
+off it scoped to our new app and WABA. Tokens are independent — generating
+one doesn't affect any other.
+
+This doc lays out what we need from you, broken into TEST phase (now) and
+LIVE phase (after sign-off). You can either give me Admin on the Business
+Manager so I self-serve, OR do the work yourself and hand me the values —
+your call.
+
+
+--------------------------------------------------------------------------------
+  TLDR — WHAT WE NEED
+--------------------------------------------------------------------------------
+
+  TEST PHASE (now):
+    A permanent System User access token, generated off the existing system
+    user, scoped to the "Hi-Service Orders" app + the sandbox "Test WhatsApp
+    Business Account" WABA, with scopes whatsapp_business_messaging +
+    whatsapp_business_management, expiry NEVER.
+
+  LIVE PHASE (after UAT sign-off):
+    The same kind of token but scoped to the LIVE WABA + the real
+    Hi-Service phone number (063 693 5532) once it's added/verified
+    on the LIVE WABA.
+
+
+================================================================================
+  TWO WAYS TO HELP — PICK WHICHEVER IS EASIER FOR YOU
+================================================================================
+
+OPTION A · Give me Admin on the Business Manager
+-------------------------------------------------
+
+  Easiest for you. I do all the asset assignment + token generation myself,
+  no further involvement needed from your side after the first 2 minutes.
+
+  Steps for you:
+    1. Open  https://business.facebook.com/settings
+    2. Confirm top-left dropdown is the Hi-Service business
+    3. Left sidebar:  Users  →  People  →  + Add
+    4. Email:         shawn@hivecliq.com
+    5. Role:          Admin (Business)
+    6. Click "Next" / "Send invite"
+
+  I'll get the email, accept, and handle the rest. The n8n system user
+  stays exactly as you left it.
+
+
+OPTION B · You do the work, hand me the values
+-----------------------------------------------
+
+  More effort for you, but no permission changes to your BM.
+
+  Do steps 1–4 below for TEST PHASE, then send me the 4 highlighted values
+  via secure channel (Signal / encrypted email / Slack DM — NOT WhatsApp
+  or plain email).
+
+
+================================================================================
+  TEST PHASE — WHAT NEEDS TO HAPPEN ON META (IF OPTION B)
+================================================================================
+
+CONTEXT: The Hi-Service Orders app already exists in your Business Manager.
+The sandbox "Test WhatsApp Business Account" WABA (id 1357146642926345)
+and the Meta-provisioned test phone number +1 555-629-8543 (phone id
+1150442781486556) are already provisioned. Webhook URL + verify token
+already registered. Only the token is missing.
+
+  ------------------------------------------------------------------
+  STEP 1 — Find the existing system user
+  ------------------------------------------------------------------
+
+    https://business.facebook.com/settings
+    →  Users  →  System users
+    →  Click into the existing n8n system user (whatever it's named)
+    →  Confirm role: Admin (if it's Employee, we'd need an Admin one)
+
+
+  ------------------------------------------------------------------
+  STEP 2 — Add Hi-Service assets to that system user
+  ------------------------------------------------------------------
+
+  On the system user's detail page, the Assigned Assets section probably
+  shows the old n8n WABA + old n8n app. Leave those alone. ADD these:
+
+    Click "+ Add assets"
+
+    Asset 1 — WhatsApp Account:
+      Left column:    WhatsApp Accounts
+      Middle column:  tick "Test WhatsApp Business Account"
+                      (id 1357146642926345)
+      Right column:   toggle ON "Full control"
+                      (or both "Manage WhatsApp Business Account" AND
+                       "Manage phone numbers and messages")
+      Save changes
+
+    Click "+ Add assets" again
+
+    Asset 2 — App:
+      Left column:    Apps
+      Middle column:  tick "Hi-Service Orders"
+      Right column:   toggle ON "Full control"
+                      (or both "Develop App" AND "Manage app")
+      Save changes
+
+  ⚠  DO NOT remove or modify the existing n8n WABA / app assignments.
+     That would break the live n8n bot.
+
+
+  ------------------------------------------------------------------
+  STEP 3 — Generate the new token
+  ------------------------------------------------------------------
+
+  Still on the system user's detail page:
+
+    Click "Generate New Token"
+
+    App dropdown ......... Hi-Service Orders
+                           (NOT the existing n8n app — make sure)
+    Token expiration ..... Never
+    Permissions tick:
+        [x] whatsapp_business_messaging
+        [x] whatsapp_business_management
+
+        Leave everything else unticked. Do NOT tick catalog_management.
+
+    Click "Generate Token"
+
+
+  ------------------------------------------------------------------
+  STEP 4 — Send me the values
+  ------------------------------------------------------------------
+
+  Meta shows the token ONCE with a Copy button. Click it (don't
+  triple-click + Cmd-C — keyboard selection can inject line breaks).
+
+  Send these via secure channel (Signal / encrypted email / Slack DM):
+
+    1. The token string itself (starts with EAA, ~200–300 chars)
+    2. The system user name (so I know which one to expect on Meta's
+       audit logs going forward)
+    3. The Hi-Service Orders App ID (visible at top of the app's
+       dashboard at developers.facebook.com)
+    4. The App Secret (App Settings → Basic → "Show" next to App Secret)
+
+  Numbers 3 and 4 are probably the same as what you set up originally.
+  I just need to confirm what's in our .env matches. Token (1) is the
+  only thing that's actually new.
+
+
+================================================================================
+  LIVE PHASE — WHAT WE'LL NEED LATER (FYI, NOT NEEDED YET)
+================================================================================
+
+This kicks in only after UAT passes on the test setup. Probably 1–2 weeks
+from now. Listing it now so you can plan ahead.
+
+  ------------------------------------------------------------------
+  CHOICE — WABA strategy for live
+  ------------------------------------------------------------------
+
+  Two paths, your preference:
+
+  Path 1 · Same WABA, add real phone number to it
+    - On the existing "Test WhatsApp Business Account" WABA, click
+      "Add phone number"
+    - Enter Hi-Service's real number: 063 693 5532
+    - Meta sends a verification code via SMS or voice call to that
+      number — someone at Hi-Service answers, reads the code, enters
+      it in Meta
+    - The same WABA now has BOTH the test phone (+1 555-629-8543) and
+      the real Hi-Service phone (063 693 5532) attached
+    - We then generate a new token (or update the existing one) to
+      send from the real phone instead of the test one
+    - Pros: simplest, one WABA, one token swap
+    - Cons: messages history mixed, sandbox WABA name "Test WhatsApp
+      Business Account" stays visible in some Meta UIs
+
+  Path 2 · New dedicated production WABA
+    - In the Hi-Service Orders app, create a fresh WABA called
+      "Hi-Service Gas"
+    - Add 063 693 5532 to it, verify the same way
+    - Assign the new WABA as an asset to the system user
+    - Generate a new live token scoped to the new WABA
+    - Pros: clean separation, professional WABA name shown to customers
+    - Cons: more clicks, must remember to update the .env with new IDs
+
+  Recommendation: Path 1 for speed, Path 2 if Hi-Service wants the
+  WABA name to read "Hi-Service Gas" publicly.
+
+  Either way, what you'd send us at cutover:
+
+    1. The new live token (or updated scope, depending on path)
+    2. The Phone Number ID for 063 693 5532 (Meta assigns this once
+       the number is verified — visible in API Setup)
+    3. The Production WABA ID (if Path 2)
+
+
+  ------------------------------------------------------------------
+  BUSINESS VERIFICATION (FUTURE-PROOFING)
+  ------------------------------------------------------------------
+
+  Unverified BMs are capped at 1 system user + can only message 5
+  test-listed recipients. Verified BMs unlock:
+    - 10+ system users
+    - Unlimited recipients
+    - WhatsApp business profile features
+    - "Verified Business" badge
+
+  Verification requires submitting business docs (CIPC registration,
+  proof of address, etc.) to Meta. Takes 1–7 days to approve.
+
+  Not urgent for Hi-Service short-term — we can run on the 5-recipient
+  cap during initial soft launch — but worth flagging. Hi-Service
+  management decides when to trigger this, you and I just need to
+  know it's available.
+
+
+================================================================================
+  CREDENTIALS WE NEED — QUICK REFERENCE TABLE
+================================================================================
+
+  Field                              | Test phase  | Live phase
+  -----------------------------------+-------------+--------------------
+  META_APP_ID                        | confirm     | unchanged
+  META_APP_SECRET                    | confirm     | unchanged
+  META_PHONE_NUMBER_ID               | confirm     | NEW (real number)
+  META_WABA_ID                       | confirm     | confirm or NEW
+                                     |             | (depends on path)
+  META_SYSTEM_USER_TOKEN             | NEW         | NEW (re-scoped)
+  META_VERIFY_TOKEN                  | already set | unchanged
+                                     |             |
+  Webhook URL (FYI — already         | https://hiservice.store/api/
+  registered, no action needed)      | webhook/whatsapp.php
+
+  All values get pasted into our admin panel at:
+    https://hiservice.store/admin/connections.php
+  ...which writes them to a chmod 600 .env file outside the docroot.
+  No values ever live in code or git.
+
+
+================================================================================
+  WHAT THIS UNLOCKS
+================================================================================
+
+Once the test token is in:
+  - Inbound WhatsApp to +1 555-629-8543 logs to our conversations table
+    (already works — webhook is verified)
+  - Outbound replies via Graph API start working (currently 401 on the
+    dead temp token)
+  - End-to-end loop test: send "hi" → bot echoes back within 5 sec
+  - Then we build the state machine routing + Xero invoice + driver
+    notification flow on top
+
+Once the live token is in (post-UAT):
+  - Customers WhatsApp the real number, bot replies
+  - Cutover: switch Meta webhook destination from n8n to hiservice.store
+  - n8n stays on standby for 7 days
+  - n8n decommissioned once stable
+
+
+================================================================================
+  CONTACT
+================================================================================
+
+  Shawn Lochner
+  Founder · HiveCliq (Pty) Ltd
+  shawn@hivecliq.com
+  +27 83 460 3414
+  www.hivecliq.com
+
+  Secure channel for sending the token:
+    - Signal: +27 83 460 3414
+    - OR encrypted email (PGP available on request)
+    - OR direct paste into the Hi-Service admin panel yourself at
+      https://hiservice.store/admin/connections.php
+      (I can give you admin login — just ask)
+
+  Reply when done — I'll run an immediate 4-endpoint Graph API probe
+  to verify the token works before we test any real WhatsApp message.
+
+  Thanks Karl — this unblocks the whole next phase.
+
+
+--------------------------------------------------------------------------------
+Doc:    Meta / WhatsApp handover request to Karl
+Re:     Hi-Service Gas WhatsApp ordering rebuild
+By:     HiveCliq · Shawn Lochner
+Date:   22 May 2026
+Status: Active — awaiting action
+--------------------------------------------------------------------------------

@@ -1,0 +1,69 @@
+Subject: Hi-Service WhatsApp — going live, need 3 things from your side
+
+Hi Karl,
+
+We've finished building the new Hi-Service Gas ordering system at
+hiservice.store. Test phase used a Twilio sandbox so we didn't touch your
+Meta setup — that's all working now and ready for cutover to the real
+WhatsApp Business API on your side.
+
+Need 3 things from you to switch over to live. Whenever you have
+30 minutes free.
+
+
+1. PRODUCTION SYSTEM USER TOKEN
+
+   Generate a new token off the existing system user in the Hi-Service BM
+   (business id 792836191561242), scoped to:
+
+      - App:         Hi-Service Orders
+      - WABA:        whichever you're using as production (see #3)
+      - Scopes:      whatsapp_business_messaging
+                     whatsapp_business_management
+      - Expiry:      Never
+
+   Send the token via Signal or encrypted channel — not plain email.
+   My Signal: +27 83 460 3414
+
+
+2. REAL HI-SERVICE NUMBER ADDED + VERIFIED ON THE WABA
+
+   The production number is 063 693 5532. Needs to be added to whichever
+   WABA we're using for production, then verified via the SMS/voice code
+   Meta sends.
+
+   Once it's verified, send me the META_PHONE_NUMBER_ID Meta assigns to
+   that number (visible in WhatsApp Manager → API Setup once verified).
+
+
+3. CONFIRM THE WABA ID FOR LIVE
+
+   Two options, your call:
+
+      Option A — Use the same WABA as the test setup
+                 (1357146642926345, "Test WhatsApp Business Account")
+                 Just add the real number alongside the test number.
+                 Simplest, fastest.
+
+      Option B — Create a fresh production WABA called "Hi-Service Gas"
+                 Cleaner branding, separate test/prod history.
+                 More clicks on your side.
+
+   Tell me which path + the META_WABA_ID for the chosen one.
+
+
+That's everything. Webhook URL + verify token are already registered with
+Meta from the test phase, so no changes there.
+
+Once I have all 3 values I paste them into our admin panel, flip a config
+flag from Twilio → Meta, and we're live. Should take 10 minutes on our
+side after your handover.
+
+No rush — give me a heads-up when you'll have capacity and I'll be ready.
+
+Thanks Karl.
+
+Shawn
+shawn@hivecliq.com
++27 83 460 3414
+www.hivecliq.com
