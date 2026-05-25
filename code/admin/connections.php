@@ -3,6 +3,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/bootstrap.php';
 require_once __DIR__ . '/../includes/xero.php';
 require_once __DIR__ . '/../includes/wa.php';
+require_once __DIR__ . '/../includes/twilio.php';
+require_once __DIR__ . '/../includes/notify.php';
 require_once __DIR__ . '/../includes/env_writer.php';
 require_login();
 
@@ -65,6 +67,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify($_POST['csrf'] ?? '')) 
         }
         redirect('/admin/connections.php');
     }
+    if ($action === 'save_twilio') {
+        $ok = env_set([
+            'TWILIO_ACCOUNT_SID'    => trim((string) ($_POST['account_sid']   ?? '')),
+            'TWILIO_AUTH_TOKEN'     => trim((string) ($_POST['auth_token']    ?? '')),
+            'TWILIO_WHATSAPP_FROM'  => trim((string) ($_POST['whatsapp_from'] ?? '')),
+        ]);
+        log_event('admin.integration.twilio_saved');
+        $_SESSION[$ok ? 'flash' : 'flash_error'] = $ok ? '✓ Twilio credentials saved.' : 'Could not write to .env.';
+        redirect('/admin/connections.php');
+    }
+    if ($action === 'test_twilio_send') {
+        $to   = trim((string) ($_POST['tw_to']   ?? ''));
+        $body = trim((string) ($_POST['tw_body'] ?? ''));
+        if ($to === '' || $body === '') {
+            $_SESSION['flash_error'] = 'Recipient and message are both required.';
+        } elseif (!Twilio::isConfigured()) {
+            $_SESSION['flash_error'] = 'Twilio is not configured — fill in Account SID + Auth Token + From number first.';
+        } else {
+            try {
+                $resp = Twilio::sendText($to, $body);
+                $sid  = $resp['sid'] ?? '(no sid)';
+                $_SESSION['flash'] = '✓ WhatsApp sent via Twilio to ' . Twilio::normalizePhone($to) . ' — message SID: ' . $sid;
+                log_event('admin.integration.twilio_test_sent', null, Twilio::normalizePhone($to), ['sid' => $sid]);
+            } catch (Throwable $e) {
+                $_SESSION['flash_error'] = '✗ Twilio send failed: ' . $e->getMessage();
+            }
+        }
+        redirect('/admin/connections.php');
+    }
+    if ($action === 'set_wa_provider') {
+        $choice = strtolower(trim((string) ($_POST['provider'] ?? '')));
+        if (!in_array($choice, ['meta', 'twilio', 'auto'], true)) {
+            $_SESSION['flash_error'] = 'Invalid provider choice.';
+        } else {
+            $val = $choice === 'auto' ? '' : $choice;
+            $ok = env_set(['WA_PROVIDER' => $val]);
+            log_event('admin.integration.wa_provider_changed', null, null, ['choice' => $choice]);
+            $_SESSION[$ok ? 'flash' : 'flash_error'] = $ok
+                ? '✓ Active WhatsApp provider set to ' . ($choice === 'auto' ? 'AUTO (auto-detect)' : strtoupper($choice))
+                : 'Could not write to .env.';
+        }
+        redirect('/admin/connections.php');
+    }
     if ($action === 'save_ghl') {
         $ok = env_set([
             'GHL_LOCATION_ID'    => trim((string) ($_POST['location_id']   ?? '')),
@@ -98,6 +143,16 @@ $meta = [
     'verify_token'       => (string) env('META_VERIFY_TOKEN', ''),
 ];
 
+$twilio = [
+    'account_sid'   => (string) env('TWILIO_ACCOUNT_SID', ''),
+    'auth_token'    => (string) env('TWILIO_AUTH_TOKEN', ''),
+    'whatsapp_from' => (string) env('TWILIO_WHATSAPP_FROM', ''),
+];
+$twilioConfigured = Twilio::isConfigured();
+
+$wpEnvChoice  = strtolower((string) env('WA_PROVIDER', ''));    // '' | 'meta' | 'twilio'
+$wpActiveInfo = notify_active_provider();                        // ['provider'=>..., 'reason'=>..., 'ok'=>bool]
+
 $ghl = [
     'location_id'   => (string) env('GHL_LOCATION_ID', ''),
     'private_token' => (string) env('GHL_PRIVATE_TOKEN', ''),
@@ -113,6 +168,36 @@ include __DIR__ . '/_header.php';
 
 <?php if ($flash):    ?><div class="alert alert-success"><?= h($flash) ?></div><?php endif; ?>
 <?php if ($flashErr): ?><div class="alert alert-error"><?= h($flashErr) ?></div><?php endif; ?>
+
+<!-- ═══════════ Active WhatsApp provider banner ═══════════ -->
+<div class="conn-card" style="margin-bottom:18px;background:linear-gradient(135deg,#0f7a52 0%,#15803d 100%);color:#fff;border:none">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap">
+    <div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.18em;text-transform:uppercase;opacity:.85;margin-bottom:4px">Active WhatsApp Provider</div>
+      <div style="font-size:22px;font-weight:700;line-height:1.1">
+        <?php if ($wpActiveInfo['ok']): ?>
+          <?= strtoupper((string) $wpActiveInfo['provider']) ?>
+          <span style="font-size:13px;font-weight:400;opacity:.85;margin-left:8px"><?= h($wpActiveInfo['reason']) ?></span>
+        <?php else: ?>
+          NONE CONFIGURED
+          <span style="font-size:13px;font-weight:400;opacity:.85;margin-left:8px"><?= h($wpActiveInfo['reason']) ?></span>
+        <?php endif; ?>
+      </div>
+    </div>
+    <form method="post" style="display:flex;gap:6px;align-items:center">
+      <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
+      <input type="hidden" name="action" value="set_wa_provider">
+      <span style="opacity:.85;font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:600">Switch</span>
+      <select name="provider" style="padding:6px 10px;border-radius:5px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.1);color:#fff;font-weight:600">
+        <option value="auto"   <?= $wpEnvChoice === ''       ? 'selected' : '' ?>>Auto-detect</option>
+        <option value="twilio" <?= $wpEnvChoice === 'twilio' ? 'selected' : '' ?>>Twilio</option>
+        <option value="meta"   <?= $wpEnvChoice === 'meta'   ? 'selected' : '' ?>>Meta direct</option>
+      </select>
+      <button type="submit" class="btn btn-sm" style="background:#fff;color:#15803d;font-weight:700;border:none">Apply</button>
+    </form>
+  </div>
+  <p style="margin:8px 0 0;font-size:12px;opacity:.85">Inbound webhook auto-detects which provider sent the message (Meta-JSON vs Twilio-form) and replies via the same channel. The selector above only affects standalone outbound (test sends, order confirmations, notifications).</p>
+</div>
 
 <div class="connections-grid">
 
@@ -306,6 +391,77 @@ include __DIR__ . '/_header.php';
           <div class="form-foot">
             <span class="muted small">After saving, register the webhook URL + verify token in Meta dashboard.</span>
             <button type="submit" class="btn btn-primary">💾 Save Meta</button>
+          </div>
+        </form>
+      </div>
+    </details>
+  </div>
+
+  <!-- ═══════════ Twilio WhatsApp ═══════════ -->
+  <div class="conn-card <?= $twilioConfigured ? 'is-connected' : '' ?>">
+    <div class="conn-head">
+      <div class="conn-logo" style="background:#F22F46;color:#fff">T</div>
+      <div>
+        <h2>Twilio WhatsApp</h2>
+        <p class="muted small">BSP fallback · sandbox + production</p>
+      </div>
+      <span class="conn-status <?= $twilioConfigured ? 'on' : 'off' ?>">
+        <?= $twilioConfigured ? '● Configured' : '○ Not connected' ?>
+      </span>
+    </div>
+
+    <div class="conn-body">
+      <?php if ($twilioConfigured): ?>
+        <div class="kv"><span>Account SID</span><b><?= h($twilio['account_sid']) ?></b></div>
+        <div class="kv"><span>Auth Token</span><b><?= h(env_mask($twilio['auth_token'])) ?></b></div>
+        <div class="kv"><span>From (WhatsApp)</span><b><?= h($twilio['whatsapp_from']) ?></b></div>
+        <div class="kv"><span>Webhook URL</span><b class="muted small">https://hiservice.store/api/webhook/whatsapp.php</b></div>
+        <p class="muted small" style="margin-top:8px">Register the webhook URL in Twilio Console → Messaging → Sandbox Settings → "When a message comes in" → POST.</p>
+
+        <details class="collapsible" open style="margin:14px 0 0">
+          <summary><span>🧪 Send a test WhatsApp message via Twilio</span></summary>
+          <div class="collapsible-body">
+            <p class="muted small" style="margin:0 0 10px">Sends via Twilio's REST API. Recipient must have texted the sandbox join phrase to <code>+14155238886</code> first (sandbox cap: ~30 unique testers).</p>
+            <form method="post" class="form-grid">
+              <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
+              <input type="hidden" name="action" value="test_twilio_send">
+              <div class="form-row form-row-2">
+                <label><span>Recipient phone</span><input type="text" name="tw_to" placeholder="e.g. 27821234567 or 0821234567" required></label>
+                <label><span>Message body</span><input type="text" name="tw_body" value="Hello from Hi-Service via Twilio 👋 (test message)" required></label>
+              </div>
+              <div class="form-foot">
+                <span class="muted small">Outbound is logged to the <code>conversations</code> table.</span>
+                <button type="submit" class="btn btn-primary">💬 Send via Twilio</button>
+              </div>
+            </form>
+          </div>
+        </details>
+      <?php else: ?>
+        <p class="muted">Twilio acts as a Meta BSP — used during TEST phase (sandbox) and as a fallback if Meta direct ever gets suspended. Free sandbox, paid production.</p>
+        <p class="muted small">Sandbox setup: Twilio Console → Messaging → Try it out → Send a WhatsApp message → use the shown <code>join &lt;phrase&gt;</code> from your phone first.</p>
+      <?php endif; ?>
+    </div>
+
+    <details class="collapsible" <?= $twilioConfigured ? '' : 'open' ?> style="margin:14px 0 0">
+      <summary><span><?= $twilioConfigured ? '✏️ Update Twilio credentials' : '🔑 Enter Twilio credentials' ?></span></summary>
+      <div class="collapsible-body">
+        <form method="post" class="form-grid">
+          <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
+          <input type="hidden" name="action" value="save_twilio">
+          <div class="form-row form-row-2">
+            <label><span>Account SID</span><input type="text" name="account_sid" value="<?= h($twilio['account_sid']) ?>" placeholder="AC..." required></label>
+            <label><span>Auth Token</span><input type="password" name="auth_token" value="<?= h($twilio['auth_token']) ?>" placeholder="32-char hex" required></label>
+          </div>
+          <div class="form-row form-row-2">
+            <label>
+              <span>WhatsApp From <small>— sandbox: <code>whatsapp:+14155238886</code></small></span>
+              <input type="text" name="whatsapp_from" value="<?= h($twilio['whatsapp_from'] ?: 'whatsapp:+14155238886') ?>" placeholder="whatsapp:+14155238886" required>
+            </label>
+            <div></div>
+          </div>
+          <div class="form-foot">
+            <span class="muted small">Find creds at <code>console.twilio.com</code> → Account Info.</span>
+            <button type="submit" class="btn btn-primary">💾 Save Twilio</button>
           </div>
         </form>
       </div>

@@ -28,25 +28,13 @@ final class IntentDetector
      */
     public static function detect(string $message, string $currentStep, array $context = []): array
     {
+        // NOTE: Claude disambiguation fallback was REMOVED on 25 May 2026.
+        // It was over-eagerly classifying greetings ("Hi") as 'general_help', trapping users
+        // in the terminal handoff state. AgentSupervisor now handles classification at a higher
+        // level (it routes ORDER_FLOW vs GENERAL_HELP vs RESET vs ESCALATE before this regex
+        // detector even runs). This detector now only runs WITHIN order-flow turns and stays
+        // intentionally simple.
         $result = self::detectByRegex($message, $currentStep, $context);
-
-        // If regex came up empty, ask Claude to disambiguate.
-        if ($result['intent'] === 'unclear' && env('ANTHROPIC_API_KEY', '')) {
-            try {
-                require_once __DIR__ . '/agent_watchdog.php';
-                $validIntents = self::validIntentsFor($currentStep);
-                if (!empty($validIntents)) {
-                    $ai = AgentWatchdog::disambiguateIntent($message, $currentStep, $validIntents);
-                    if ($ai && $ai['intent'] !== 'unclear') {
-                        $result['intent']     = $ai['intent'];
-                        $result['confidence'] = (float) $ai['confidence'];
-                        $result['source']     = 'claude-fallback';
-                    }
-                }
-            } catch (Throwable $e) {
-                // Fail silent — regex result stands
-            }
-        }
         return $result;
     }
 
