@@ -33,6 +33,55 @@ final class ProductRepo
     }
 
     /**
+     * SHARED stock-validation helper — single source of truth.
+     *
+     * Called by BOTH ordering channels:
+     *   - WhatsApp:  Conversation::actCollectOrderDetails (before cart commit)
+     *   - Web shop:  shop/browse.php (after qty form POST)
+     *
+     * HARD RULE (locked 2026-05-26 — do not relax without explicit approval):
+     *   - Only TRACKED products (is_tracked=1) are gated on stock
+     *   - Untracked items (services, deposits, refills, levies, surcharges)
+     *     are ALWAYS allowed — they have no physical inventory
+     *   - The customer-facing CATALOGUE filter stays pure is_active=1
+     *     (admin curation is canonical, stock never auto-hides)
+     *   - This stock gate fires only at ORDER TIME — preventing the
+     *     "your order is locked but unfulfillable" trap
+     *
+     * Returns shortfalls in the format both channels expect. Empty array =
+     * everything in stock, OK to proceed.
+     *
+     * @param array $lines  Each: ['product_id'=>int, 'qty'=>int, 'product_name'?=>string]
+     * @return array        [['product_id','product_name','requested','available'], ...]
+     */
+    public static function checkCartStock(array $lines): array
+    {
+        $issues = [];
+        foreach ($lines as $line) {
+            $pid = (int) ($line['product_id'] ?? 0);
+            $qty = (int) ($line['qty']        ?? $line['quantity'] ?? 0);
+            if ($pid <= 0 || $qty <= 0) continue;
+
+            $stmt = db()->prepare('SELECT name, in_stock_qty, is_tracked FROM products WHERE id = ? LIMIT 1');
+            $stmt->execute([$pid]);
+            $p = $stmt->fetch();
+            if (!$p) continue;
+            if ((int) $p['is_tracked'] !== 1) continue;       // untracked → unlimited
+
+            $available = (int) $p['in_stock_qty'];
+            if ($available < $qty) {
+                $issues[] = [
+                    'product_id'   => $pid,
+                    'product_name' => (string) ($line['product_name'] ?? $p['name']),
+                    'requested'    => $qty,
+                    'available'    => $available,
+                ];
+            }
+        }
+        return $issues;
+    }
+
+    /**
      * Build a WhatsApp-style lettered catalogue, sorted by kg then name.
      * Returns [ ['letter'=>'A', 'product'=>[...]], ... ]
      */

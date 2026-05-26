@@ -14,6 +14,7 @@ if (!$customer) {
 }
 
 $products = ProductRepo::listActive();
+$stockIssues = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     foreach ($products as $p) {
@@ -24,9 +25,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             Cart::setItem((int) $p['id'], 0, 0, '');
         }
     }
-    if (!Cart::isEmpty()) {
+
+    // ─── SHARED stock gate (matches WhatsApp behaviour exactly) ───
+    // Validate the cart against products.in_stock_qty for any TRACKED items.
+    // If any line exceeds available stock, hold the customer on this page with
+    // a banner + an option to either reduce quantities OR request a callback
+    // when stock arrives. Untracked items (services/deposits/refills/levies)
+    // are always allowed. Hard-locked rule — see ProductRepo::checkCartStock().
+    $cartLines = [];
+    foreach (Cart::items() as $i) {
+        $cartLines[] = [
+            'product_id'   => (int) $i['product_id'],
+            'qty'          => (int) $i['qty'],
+            'product_name' => (string) $i['name'],
+        ];
+    }
+    $stockIssues = ProductRepo::checkCartStock($cartLines);
+
+    if (empty($stockIssues) && !Cart::isEmpty()) {
         redirect('/shop/address.php');
     }
+    // If $stockIssues is non-empty, fall through and render the banner below.
 }
 
 $cartItems = [];
@@ -42,6 +61,26 @@ include __DIR__ . '/_header.php';
     <p class="kicker">Step 4 of 6 · Hi <?= h(explode(' ', $customer['full_name'])[0] ?? 'there') ?> 👋</p>
     <h1>Choose your gas</h1>
     <p class="lead">Tap + and − to set the quantity. Total updates live.</p>
+
+    <?php if (!empty($stockIssues)): ?>
+      <div class="alert alert-warning" style="background:#fff7ed;border:1px solid #fed7aa;border-left:4px solid #f97316;border-radius:8px;padding:14px 16px;margin:18px 0;color:#7c2d12">
+        <h3 style="margin:0 0 8px;color:#9a3412;font-size:16px">😕 Limited stock on some items</h3>
+        <ul style="margin:0 0 12px 18px;padding:0;font-size:14px">
+          <?php foreach ($stockIssues as $i): ?>
+            <li>
+              <b><?= h($i['product_name']) ?></b> —
+              you asked for <b><?= (int) $i['requested'] ?></b>,
+              we currently have <b><?= (int) $i['available'] ?></b>
+            </li>
+          <?php endforeach; ?>
+        </ul>
+        <p style="margin:0 0 10px;font-size:14px">Two ways forward:</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span class="muted small" style="align-self:center">↓ Reduce the quantity below and continue, OR ↓</span>
+          <a href="/shop/callback.php" class="btn btn-ghost btn-sm" style="background:#fff;border:1px solid #f97316;color:#9a3412;text-decoration:none;padding:8px 14px;border-radius:6px;font-weight:600">📞 Leave my details — call me when it's back</a>
+        </div>
+      </div>
+    <?php endif; ?>
 
     <form method="post" id="browse-form">
       <div class="product-grid">

@@ -36,6 +36,7 @@ require_once __DIR__ . '/product_repo.php';
 require_once __DIR__ . '/slot_repo.php';
 require_once __DIR__ . '/order_repo.php';
 require_once __DIR__ . '/payfast.php';
+require_once __DIR__ . '/claude_agent.php';
 
 final class Conversation
 {
@@ -99,6 +100,14 @@ final class Conversation
             $trans,                    // pass by ref so action can override next_step
         );
 
+        // Reset the in-flow recovery counter whenever the state actually advances —
+        // a successful transition means the previous "unclear" history is no longer
+        // relevant. (actSmartClarify already resets on its own happy path; this
+        // catches the regular-intent path.)
+        if ($trans['next_step'] !== $currentStep) {
+            unset($stateData['unclear_count'], $stateData['unclear_state'], $stateData['stuck_alert_sent']);
+        }
+
         // Persist updated session
         self::saveSession($phone, $trans['next_step'], $stateData, $session, $trans['should_clear'] ?? false);
 
@@ -124,7 +133,10 @@ final class Conversation
                 return self::tplMenu();
 
             case 'clarify':
-                return $template ?: self::tplMenu();
+                // Haiku-powered recovery — see actSmartClarify(). Falls back to the static
+                // template if Claude is unavailable. May update $trans['next_step'] if it
+                // confidently recovers a real intent the regex missed.
+                return self::actSmartClarify($phone, $text, $session, $stateData, $trans, $template);
 
             case 'cancel_and_clear':
                 $stateData = [];
@@ -164,6 +176,12 @@ final class Conversation
 
             case 'awaiting_street_code':
                 return self::actCaptureStreetCode($text, $phone, $stateData, $trans);
+
+            case 'request_callback_details':
+                return self::actRequestCallbackDetails($phone, $stateData, $trans);
+
+            case 'log_callback_lead':
+                return self::actLogCallbackLead($text, $phone, $session, $stateData, $trans);
 
             case 'bridge_to_ghl':
                 return self::tplGeneralHelp();
@@ -301,6 +319,30 @@ final class Conversation
         $resolved = ProductRepo::resolveTokens($tokens);
         if (empty($resolved['lines'])) {
             return "None of those product codes matched. Please reply with codes from this list:\n\n" . self::tplProductCatalogue();
+        }
+
+        // ─── Stock validation ───
+        // For each tracked line, check products.in_stock_qty against the requested qty.
+        // If ANY line has insufficient stock → transition to S_OUT_OF_STOCK and don't
+        // commit the cart. Customer gets 3 clear options (try other / callback / cancel).
+        $issues = self::checkStock($resolved['lines']);
+        if (!empty($issues)) {
+            $stateData['out_of_stock_lines'] = $issues;
+            $stateData['pending_cart']       = $resolved['lines'];  // remember in case they retry
+            $trans['next_step'] = StateMachine::S_OUT_OF_STOCK;
+            log_event('whatsapp.order.out_of_stock', null, $phone, [
+                'requested' => $tokens, 'shortfalls' => $issues,
+            ]);
+
+            $msg = "😕 *Sorry — limited stock on your order:*\n\n";
+            foreach ($issues as $i) {
+                $msg .= "• {$i['product_name']} — you asked for *{$i['requested']}*, we currently have *{$i['available']}*\n";
+            }
+            $msg .= "\n*What would you like to do?*\n";
+            $msg .= "*A* - try a different product\n";
+            $msg .= "*B* - leave your name, we'll call as soon as it's back in stock\n";
+            $msg .= "*Cancel* - drop this order";
+            return $msg;
         }
 
         $stateData['cart'] = $resolved['lines'];
@@ -643,6 +685,351 @@ final class Conversation
         if ($summary === '') $summary = "• (line items unavailable)\n";
         $summary .= "Total: R " . number_format((float) ($order['total_amount'] ?? 0), 2);
         return $summary;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  Stock check + out-of-stock recovery actions
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * Thin wrapper over the shared stock-check helper. Locked to ProductRepo
+     * so the WhatsApp + web shop use identical rules.
+     * @see ProductRepo::checkCartStock()
+     */
+    private static function checkStock(array $cartLines): array
+    {
+        return ProductRepo::checkCartStock($cartLines);
+    }
+
+    private static function actRequestCallbackDetails(string $phone, array &$stateData, array &$trans): string
+    {
+        $trans['next_step'] = StateMachine::S_AWAITING_CALLBACK_DETAILS;
+        return "👍 Got it — we'll get back to you as soon as stock arrives.\n\n" .
+               "Please send me your *name* so the team knows who to call:\n\n" .
+               "*Example:*\nShawn Lochner\n\n" .
+               "Or type *Cancel* to drop this.";
+    }
+
+    private static function actLogCallbackLead(string $text, string $phone, array $session, array &$stateData, array &$trans): string
+    {
+        $name = trim($text);
+        if ($name === '' || mb_strlen($name) < 2) {
+            return "I need at least your name (just the first name is fine). Please send it and our team will call you back.";
+        }
+
+        $oosLines = $stateData['out_of_stock_lines'] ?? [];
+        $summaryLines = [];
+        foreach ($oosLines as $l) {
+            $summaryLines[] = "{$l['requested']} × {$l['product_name']} (only {$l['available']} in stock)";
+        }
+        $oosSummary = implode("\n  - ", $summaryLines) ?: '(no items captured)';
+
+        // Try to find an existing customer record by phone, OR create one for the lead
+        $custId = (int) ($stateData['customer_id'] ?? $session['customer_id'] ?? 0);
+        try {
+            if (!$custId) {
+                $existing = CustomerRepo::findByPhone($phone);
+                if ($existing) {
+                    $custId = (int) $existing['id'];
+                    // Update name if blank
+                    if (empty($existing['full_name']) || $existing['full_name'] === null) {
+                        CustomerRepo::update($custId, ['full_name' => $name]);
+                    }
+                } else {
+                    $custId = CustomerRepo::create([
+                        'phone'     => $phone,
+                        'full_name' => $name,
+                        'email'     => '',
+                    ]);
+                }
+            }
+        } catch (Throwable $e) {
+            log_to_file('whatsapp', 'callback lead — customer create failed', ['err' => $e->getMessage()]);
+        }
+
+        // Log + notify GHL (Telegram alert wires in here later — already in spec)
+        log_event('whatsapp.lead.callback_requested', 'customer', $custId ? (string) $custId : null, [
+            'phone' => $phone, 'name' => $name, 'out_of_stock' => $oosLines,
+        ]);
+
+        try {
+            if ($custId) {
+                require_once __DIR__ . '/ghl.php';
+                $cust = CustomerRepo::findById($custId);
+                $gid  = GHL::syncCustomer($cust);
+                if ($gid) {
+                    GHL::addTag($gid, ['callback-requested', 'out-of-stock']);
+                    GHL::notifyUser(
+                        GHL::USER_GAS,
+                        "Callback requested — stock issue",
+                        "Customer: *{$name}* ({$phone})\n\nWanted but out of stock:\n  - {$oosSummary}\n\nReach out as soon as stock lands."
+                    );
+                }
+            }
+        } catch (Throwable $e) {
+            log_to_file('whatsapp', 'callback lead — GHL notify failed', ['err' => $e->getMessage()]);
+        }
+
+        // Clear the order context — customer is now in lead state, not order state
+        $stateData = ['customer_id' => $custId];
+        $trans['next_step'] = StateMachine::S_MENU;
+        $trans['should_clear'] = false;  // we WANT customer_id to stick
+
+        return "✅ Thanks, *{$name}* — our team has been notified.\n\n" .
+               "We'll WhatsApp or call you on this number ({$phone}) as soon as stock arrives.\n\n" .
+               "In the meantime if there's anything else, just type *MENU* and I'll help.";
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  Smart clarify — Haiku-powered in-flow recovery
+    //  Fires when IntentDetector regex returned 'unclear' for the current state.
+    //  Three jobs:
+    //    1. Try to map the user's off-script message to a valid intent for this
+    //       state (typos, synonyms, "same please" instead of "S", etc.)
+    //    2. If it can't map cleanly, write a context-aware clarification message
+    //       that ACKNOWLEDGES what the user said and rephrases the options
+    //       differently — so it doesn't feel like a loop.
+    //    3. After 3 consecutive unclears at the same state, escalate to "type
+    //       CANCEL or call 021 492 8515" instead of churning more Haiku calls.
+    // ═══════════════════════════════════════════════════════════════════════
+    private static function actSmartClarify(string $phone, string $text, array $session, array &$stateData, array &$trans, ?string $fallbackTemplate): string
+    {
+        $currentStep = (string) ($session['current_step'] ?: StateMachine::S_MENU);
+
+        // Per-state unclear counter — reset when state changes
+        $prevUnclearState = (string) ($stateData['unclear_state'] ?? '');
+        $unclearCount    = (int) ($stateData['unclear_count'] ?? 0);
+        if ($prevUnclearState !== $currentStep) $unclearCount = 0;
+        $unclearCount++;
+        $stateData['unclear_state'] = $currentStep;
+        $stateData['unclear_count'] = $unclearCount;
+
+        // ─── 3rd strike: exit hatch (state stays put) ───
+        // At 3 consecutive unclears, offer clear options — but DO NOT reset state.
+        // Customer can still recover into the order with their next reply if they
+        // type a valid answer.
+        if ($unclearCount === 3) {
+            log_event('conversation.smart_clarify.exhausted', null, $phone, [
+                'state' => $currentStep, 'last_message' => substr($text, 0, 100),
+            ]);
+            return "I'm sorry — I'm not quite catching what you mean. 😕\n\n" .
+                   "Three options:\n" .
+                   "• Try answering one more time using the format above\n" .
+                   "• Type *MENU* to start over\n" .
+                   "• Or call us on *021 492 8515* — a human can take over right away";
+        }
+
+        // ─── 4th strike and beyond: silently ping admin + offer human handoff ───
+        // Still don't reset the state. If/when a human responds via WhatsApp the
+        // customer's conversation is intact and someone can pick up where they were.
+        if ($unclearCount >= 4) {
+            // Only ping once per stuck-state-episode (not every subsequent turn)
+            if (empty($stateData['stuck_alert_sent'])) {
+                self::escalateStuckCustomer($phone, $session, $currentStep, $text, $unclearCount);
+                $stateData['stuck_alert_sent'] = true;
+            }
+            return "I've let our team know you're stuck — someone will WhatsApp or call you shortly.\n\n" .
+                   "Office hours: Mon-Fri 08:00-17:00 · Sat 08:00-13:00.\n" .
+                   "Direct line: *021 492 8515*\n\n" .
+                   "_Type MENU if you'd like to start fresh in the meantime._";
+        }
+
+        // Get valid intents for this state. If none, fall back to the static template.
+        $validIntents = IntentDetector::validIntentsFor($currentStep);
+        if (empty($validIntents)) {
+            return $fallbackTemplate ?: self::tplMenu();
+        }
+
+        // Build a Haiku call. Strict JSON output, low cost.
+        try {
+            $system = self::smartClarifyPrompt();
+            $userMsg = self::buildSmartClarifyUserMessage($currentStep, $text, $validIntents, $stateData, $phone);
+
+            $r = ClaudeAgent::askJson($system, $userMsg, [
+                'model'       => ClaudeAgent::MODEL_FAST,
+                'max_tokens'  => 250,
+                'temperature' => 0.2,
+            ]);
+            $j = $r['json'];
+
+            $detectedIntent = (string) ($j['intent']     ?? 'unclear');
+            $confidence     = (float)  ($j['confidence'] ?? 0);
+            $message        = (string) ($j['message']    ?? '');
+
+            log_event('conversation.smart_clarify', null, $phone, [
+                'state'      => $currentStep,
+                'attempt'    => $unclearCount,
+                'detected'   => $detectedIntent,
+                'confidence' => $confidence,
+                'cost_usd'   => $r['cost'] ?? 0,
+            ]);
+
+            // If Haiku confidently mapped the user's message to a valid intent, re-transition
+            // through the FSM as if that intent had been detected. Only ONE recovery jump per
+            // turn — never recursive (we don't call executeAction from inside actSmartClarify).
+            if ($detectedIntent !== 'unclear' && $confidence >= 0.7 && in_array($detectedIntent, $validIntents, true)) {
+                $newTrans = StateMachine::transition($currentStep, $detectedIntent);
+                $stateData['unclear_count'] = 0;     // reset on successful recovery
+                $stateData['unclear_state'] = '';
+
+                // Apply the new transition's next_step + run its action
+                $trans['next_step'] = $newTrans['next_step'];
+                return self::executeAction(
+                    $newTrans['action'],
+                    $newTrans['response_template'],
+                    $phone,
+                    $text,
+                    ['intent' => $detectedIntent, 'recovered' => true],
+                    $session,
+                    $stateData,
+                    $trans,
+                );
+            }
+
+            // Otherwise return Haiku's context-aware clarification message
+            return $message !== ''
+                ? $message
+                : ($fallbackTemplate ?: "Sorry, I didn't catch that. " . self::tplMenu());
+
+        } catch (Throwable $e) {
+            // Claude unavailable / API error — fall back to the static template.
+            // Don't break the conversation just because Haiku is down.
+            log_to_file('whatsapp', 'smart_clarify failed — fallback to template', [
+                'err' => $e->getMessage(), 'state' => $currentStep,
+            ]);
+            return $fallbackTemplate ?: self::tplMenu();
+        }
+    }
+
+    /** Prompt-cached system message for the Haiku in-flow recovery agent. */
+    private static function smartClarifyPrompt(): string
+    {
+        return <<<PROMPT
+You are the Hi-Service Gas WhatsApp ordering bot's in-flow recovery agent.
+
+Your job is NARROW. You watch a single customer turn within the ordering flow.
+The regex intent detector has just failed to match what the customer said.
+You decide ONE of three things:
+
+  1. Map the customer's message to one of the VALID INTENTS for the current
+     state (typos, synonyms, paraphrasing of an expected answer). Return the
+     intent name + a confidence score 0-1.
+  2. If the customer's message is genuinely off-script (unrelated question,
+     gibberish, request for help) — return intent="unclear" and write a SHORT
+     (1-2 line) friendly clarification that:
+       - Acknowledges what they actually said (don't ignore them)
+       - Restates the question in different words — never repeat the original
+         prompt verbatim
+       - Lists the valid choices clearly
+  3. NEVER invent new intent names. NEVER claim prices/dates/areas. NEVER
+     leak that you are an AI. Stay friendly + professional, SA English, no
+     emojis unless one fits naturally.
+
+# Hard rules
+
+ - Confidence >= 0.7 is required to claim a real intent — anything fuzzier
+   should be unclear with a clarification.
+ - For yes/no questions, "yes", "yeah", "sure", "please do", "yep" all map
+   to the affirmative intent. "no", "nope", "nah", "don't" map to the
+   negative.
+ - For numbered menus, "first one", "the first", "first option" maps to
+   intent 1; same for "second"/"third" etc.
+ - If the customer's message is a QUESTION about the current step (e.g.
+   "what does S mean?", "what's the price?"), answer in 1 line then restate
+   the options. Set intent="unclear" + include the answer in your message.
+ - If the customer expresses frustration or confusion, be warm but stay
+   on-task. Don't apologise repeatedly.
+
+# Output
+
+Reply with ONLY valid JSON, no prose, no markdown:
+  { "intent": "exact_intent_name", "confidence": 0.85, "message": "" }
+OR
+  { "intent": "unclear", "confidence": 0.0, "message": "Your 1-2 line clarification..." }
+PROMPT;
+    }
+
+    /**
+     * Ping admin (GHL tag + user notify) when a customer is genuinely stuck —
+     * 4+ unclear replies at the same FSM state. Does NOT reset the customer's
+     * state — when a human responds via WhatsApp, the conversation is intact
+     * and they can take over from exactly where the customer was.
+     *
+     * Telegram hook will plug in here once Stage 4 alerts are wired.
+     */
+    private static function escalateStuckCustomer(string $phone, array $session, string $stuckAt, string $lastMessage, int $strikes): void
+    {
+        try {
+            $custId = (int) ($session['customer_id'] ?? 0);
+            if (!$custId) {
+                $existing = CustomerRepo::findByPhone($phone);
+                if ($existing) $custId = (int) $existing['id'];
+            }
+
+            log_event('conversation.stuck_escalated', 'customer', $custId ? (string) $custId : null, [
+                'phone'        => $phone,
+                'stuck_at'     => $stuckAt,
+                'strikes'      => $strikes,
+                'last_message' => substr($lastMessage, 0, 200),
+            ]);
+
+            if ($custId) {
+                require_once __DIR__ . '/ghl.php';
+                $cust = CustomerRepo::findById($custId);
+                $gid  = GHL::syncCustomer($cust);
+                if ($gid) {
+                    GHL::addTag($gid, ['whatsapp-stuck', 'needs-human-pickup']);
+                    $name = trim((string) ($cust['full_name'] ?? '')) ?: $phone;
+                    GHL::notifyUser(
+                        GHL::USER_GAS,
+                        "Customer stuck mid-order — needs human pickup",
+                        "Customer: *{$name}* ({$phone})\n" .
+                        "Stuck at step: *{$stuckAt}*\n" .
+                        "Their last message: \"{$lastMessage}\"\n" .
+                        "Strikes: {$strikes}\n\n" .
+                        "Reach out via WhatsApp — their conversation is paused exactly where they were, so anything you reply will pick up the thread."
+                    );
+                }
+            }
+        } catch (Throwable $e) {
+            log_to_file('whatsapp', 'escalateStuckCustomer failed', ['err' => $e->getMessage()]);
+        }
+    }
+
+    private static function buildSmartClarifyUserMessage(string $currentStep, string $text, array $validIntents, array $stateData, string $phone): string
+    {
+        $intentList = '  - ' . implode("\n  - ", $validIntents);
+
+        // Brief state context — what they're being asked
+        $stateBlurb = match ($currentStep) {
+            StateMachine::S_AWAITING_ORDER_CHOICE    => "Customer asked: repeat last order (1) OR place a different order (2)",
+            StateMachine::S_AWAITING_ADDRESS_CHOICE  => "Customer asked: deliver to saved address (S/Y) OR enter a different address (D/N)",
+            StateMachine::S_AWAITING_SLOT_SELECTION  => "Customer asked: pick slot A or B, or type a specific date (e.g. 28/05/2026)",
+            StateMachine::S_AWAITING_PAYMENT_CONFIRMATION => "Customer asked: P to pay, D for different order, Cancel to cancel",
+            StateMachine::S_SHOWING_PRODUCTS         => "Customer asked: reply with letter + quantity (e.g. B2 = 2 × 5kg LPG)",
+            StateMachine::S_COLLECTING_ORDER_DETAILS => "Customer asked: send product code(s) like B2 or D1",
+            StateMachine::S_AWAITING_STREET_CODE     => "Customer asked: 4-digit postal code",
+            StateMachine::S_AWAITING_NEW_CUSTOMER_DETAILS => "Customer asked: 3 lines — name, address, email",
+            StateMachine::S_AWAITING_NEW_ADDRESS     => "Customer asked: address on separate lines (street, suburb, city, postal code)",
+            StateMachine::S_CONFIRM_NEW_DETAILS      => "Customer asked: Y to keep current details, N to update",
+            StateMachine::S_MENU                     => "Customer asked: 1 to order gas, 2 for general help",
+            StateMachine::S_OUT_OF_STOCK             => "Product they wanted is out of stock. Customer asked: A to try a different product, B to leave their name for a callback, or Cancel",
+            StateMachine::S_AWAITING_CALLBACK_DETAILS=> "Customer asked: send their name so the team can call back when stock arrives",
+            default                                  => "Customer is mid-ordering at state: {$currentStep}",
+        };
+
+        return <<<MSG
+Current FSM state: {$currentStep}
+Context: {$stateBlurb}
+
+Valid intents the regex matcher accepts here:
+{$intentList}
+
+Customer just sent: "{$text}"
+
+Did they likely mean one of the valid intents? Or are they off-script?
+Reply with JSON.
+MSG;
     }
 
     /** Extract a friendly first name from a full name. Returns '' if blank/unset. */

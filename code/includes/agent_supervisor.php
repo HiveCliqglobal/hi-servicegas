@@ -52,11 +52,16 @@ final class AgentSupervisor
         $history = self::recentHistory($phone, 8);
         $currentStep = (string) ($session['current_step'] ?? 'menu');
 
-        // 2. Loop detection — if stuck, break out with empathetic reset BEFORE classifying
-        if (self::isStuck($phone, $currentStep)) {
-            log_event('supervisor.loop_break', null, $phone, ['stuck_at' => $currentStep]);
-            return self::breakLoop($phone, $text, $currentStep, $history);
-        }
+        // 2. (Removed 2026-05-26) Auto-reset on stuck-state was kicking customers
+        //    to MENU as soon as they typed 3 unclear answers at the same step —
+        //    even when they were genuinely mid-order and just needed a clearer
+        //    prompt. Conversation::actSmartClarify now owns recovery: 1-2 Haiku
+        //    clarifications, 3rd strike offers exit hatch (MENU / CANCEL / call
+        //    021 492 8515) WITHOUT touching state, 4th strike escalates to admin
+        //    via GHL but STILL keeps the customer at the current step so a human
+        //    can pick up where they were. No more "kicked back to menu" surprise.
+        //    isStuck()/breakLoop() helpers are kept on the class for emergency
+        //    use (e.g. genuine FSM bugs) but no longer auto-trigger.
 
         // 3. Classify intent via Haiku (cheap, fast, grounded)
         $classification = self::classify($text, $currentStep, $history);

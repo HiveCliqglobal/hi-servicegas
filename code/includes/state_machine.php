@@ -42,6 +42,8 @@ final class StateMachine
     public const S_PROCESSING_PAYMENT            = 'processing_payment';
     public const S_CANCELLED                     = 'cancelled';
     public const S_GENERAL_HELP                  = 'general_help';
+    public const S_OUT_OF_STOCK                  = 'out_of_stock';
+    public const S_AWAITING_CALLBACK_DETAILS     = 'awaiting_callback_details';
 
     /**
      * Compute the next transition for (currentStep, intent).
@@ -238,6 +240,25 @@ final class StateMachine
                     'next_step' => self::S_AWAITING_SLOT_SELECTION, 'action' => 'clarify',
                     'response_template' => 'Please select A or B for your preferred delivery slot, or type a date (e.g. 23/02/2026).',
                 ],
+            ],
+
+            // ════════════ Out-of-stock handling ════════════
+            // Entered when actCollectOrderDetails detects a tracked product in the
+            // customer's cart has insufficient stock. The customer gets 3 clear options
+            // (try a different product, leave their number, or cancel) so they never
+            // end up in a dead-end "your order is locked but unfulfillable" state.
+            self::S_OUT_OF_STOCK => [
+                'try_other_product' => ['next_step' => self::S_SHOWING_PRODUCTS,          'action' => 'get_product_catalog',         'response_template' => null],
+                'request_callback'  => ['next_step' => self::S_AWAITING_CALLBACK_DETAILS, 'action' => 'request_callback_details',    'response_template' => null],
+                '_default'          => ['next_step' => self::S_OUT_OF_STOCK,              'action' => 'clarify',
+                                        'response_template' => "Please reply with:\n*A* - try a different product\n*B* - leave your number, we'll call when it's back in stock\n*Cancel* - cancel this order"],
+            ],
+
+            // Customer sent "B" at out-of-stock → we ask for their name + phone confirmation
+            self::S_AWAITING_CALLBACK_DETAILS => [
+                'callback_details_provided' => ['next_step' => self::S_MENU,                       'action' => 'log_callback_lead',  'response_template' => null],
+                '_default'                  => ['next_step' => self::S_AWAITING_CALLBACK_DETAILS,  'action' => 'clarify',
+                                                'response_template' => "Please send your *name* (we already have your number from this chat). Our team will reach out as soon as stock arrives.\n\n*Example:*\nShawn Lochner\n\nOr type *Cancel* to drop this."],
             ],
 
             self::S_AWAITING_PAYMENT_CONFIRMATION => [

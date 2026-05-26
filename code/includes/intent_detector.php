@@ -38,8 +38,8 @@ final class IntentDetector
         return $result;
     }
 
-    /** List the intents that are valid for a given step (for Claude prompt). */
-    private static function validIntentsFor(string $step): array
+    /** List the intents that are valid for a given step (for Claude prompts + smart-recovery). */
+    public static function validIntentsFor(string $step): array
     {
         $defs = StateMachine::definition()[$step] ?? null;
         if (!$defs) return [];
@@ -185,6 +185,26 @@ final class IntentDetector
                     return ['intent' => 'new_order', 'action' => 'get_product_catalog', 'extracted' => $extracted, 'confidence' => 1.0];
                 }
                 return ['intent' => 'unclear', 'action' => null, 'extracted' => $extracted, 'confidence' => 0.0];
+
+            case StateMachine::S_OUT_OF_STOCK:
+                // A or "different" / "other" / "another" / "try" → swap product
+                if ($msg === 'a' || $msg === '1' || self::containsAny($msg, ['different', 'other', 'another', 'try', 'swap', 'change'])) {
+                    return ['intent' => 'try_other_product', 'action' => 'get_product_catalog', 'extracted' => $extracted, 'confidence' => 1.0];
+                }
+                // B or "callback" / "call me" / "let me know" → request callback
+                if ($msg === 'b' || $msg === '2' || self::containsAny($msg, ['callback', 'call me', 'call back', 'let me know', 'phone me', 'notify me', 'leave', 'wait'])) {
+                    return ['intent' => 'request_callback', 'action' => 'request_callback_details', 'extracted' => $extracted, 'confidence' => 1.0];
+                }
+                return ['intent' => 'unclear', 'action' => 'clarify', 'extracted' => $extracted, 'confidence' => 0.0];
+
+            case StateMachine::S_AWAITING_CALLBACK_DETAILS:
+                // Anything that looks like a name (letters + at least one space, OR 3+ chars)
+                $trim = trim($raw);
+                if ($trim !== '' && preg_match('/[A-Za-z]/', $trim) && mb_strlen($trim) >= 2) {
+                    $extracted['raw_name'] = $trim;
+                    return ['intent' => 'callback_details_provided', 'action' => 'log_callback_lead', 'extracted' => $extracted, 'confidence' => 0.95];
+                }
+                return ['intent' => 'unclear', 'action' => 'clarify', 'extracted' => $extracted, 'confidence' => 0.0];
         }
 
         return ['intent' => 'unclear', 'action' => null, 'extracted' => $extracted, 'confidence' => 0.0];
