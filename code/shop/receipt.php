@@ -144,8 +144,14 @@ $vat      = (float) $order['total_amount'] - $subtotal;
   <footer class="r-foot">
     <p><b>Hi-Service Gas (Pty) Ltd</b> · 16 Rankine Street, Strand, Western Cape, 7140 · 063 693 5532 · gas@hiservice.co.za</p>
     <p style="margin-top:6px">Thank you for your order. Our dispatch team has been notified of your delivery booking. For any questions reply on WhatsApp to <a href="https://wa.me/27636935532">063 693 5532</a>.</p>
-    <?php if (!$order['xero_invoice_number']): ?>
-      <p style="margin-top:14px;color:#bf6700"><b>Note:</b> This is an order receipt. Your VAT invoice from Xero will follow once accounting is connected.</p>
+    <?php if (!empty($order['xero_invoice_number'])): ?>
+      <p style="margin-top:14px;color:#0f7a52"><b>VAT invoice:</b> <?= h($order['xero_invoice_number']) ?>
+      <?php if (!empty($order['xero_invoice_pdf_url'])): ?>
+        · <a href="<?= h($order['xero_invoice_pdf_url']) ?>" download="Hi-Service-Invoice-<?= h($order['order_reference']) ?>.pdf">Download from Xero</a>
+      <?php endif; ?>
+      </p>
+    <?php elseif ($order['status'] === 'paid' || $order['status'] === 'delivered'): ?>
+      <p style="margin-top:14px;color:#bf6700"><b>Note:</b> Your Xero VAT invoice is being generated — check your WhatsApp or refresh this page in a moment.</p>
     <?php endif; ?>
   </footer>
 </div>

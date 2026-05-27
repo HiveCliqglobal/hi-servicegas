@@ -114,6 +114,99 @@ try {
             }
         }
 
+        // ════════════════════════════════════════════════════════════════════
+        //  5. INSTANT Xero invoice + PDF delivery
+        //  Inline (not queued) so customer gets the PDF on WhatsApp within
+        //  seconds of paying. Wrapped in try/catch so a Xero outage or
+        //  WhatsApp error never blocks the ITN response — failures are logged
+        //  for cron retry later.
+        // ════════════════════════════════════════════════════════════════════
+        $xeroPdfPublicPath = '';
+        try {
+            require_once __DIR__ . '/../../includes/xero.php';
+            require_once __DIR__ . '/../../includes/xero_sync.php';
+
+            if (Xero::isConnected()) {
+                // 5a. Push the invoice to Xero (AUTHORISED, line items + contact)
+                $xeroResp = XeroSync::pushInvoice((int) $order['id']);
+
+                // 5b. Fetch the official Xero PDF
+                $pdfBytes = Xero::getInvoicePdf($xeroResp['invoice_id']);
+
+                // 5c. Save to public uploads dir with random suffix (unguessable URLs)
+                $hash         = bin2hex(random_bytes(8));
+                $safeRef      = preg_replace('/[^A-Za-z0-9_-]/', '', $order['order_reference']);
+                $filename     = $safeRef . '-' . $hash . '.pdf';
+                $uploadDir    = __DIR__ . '/../../uploads/invoices';
+                $diskPath     = $uploadDir . '/' . $filename;
+
+                if (!is_dir($uploadDir)) @mkdir($uploadDir, 0755, true);
+                file_put_contents($diskPath, $pdfBytes);
+
+                $xeroPdfPublicPath = '/uploads/invoices/' . $filename;
+                db()->prepare("UPDATE orders SET xero_invoice_pdf_url = :p WHERE id = :id")
+                    ->execute([':p' => $xeroPdfPublicPath, ':id' => (int) $order['id']]);
+
+                log_event('xero.invoice.created', 'order', $ref, [
+                    'invoice_id'     => $xeroResp['invoice_id'],
+                    'invoice_number' => $xeroResp['invoice_number'],
+                    'pdf_url'        => $xeroPdfPublicPath,
+                    'bytes'          => strlen($pdfBytes),
+                ]);
+            } else {
+                log_to_file('payfast-itn', 'xero not connected — skipped invoice push', ['ref' => $ref]);
+            }
+        } catch (Throwable $e) {
+            log_to_file('payfast-itn', 'xero invoice push/fetch failed (will retry via cron)', [
+                'err' => $e->getMessage(), 'ref' => $ref,
+            ]);
+            log_event('xero.invoice.failed', 'order', $ref, ['err' => substr($e->getMessage(), 0, 300)]);
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  6. INSTANT WhatsApp confirmation + PDF (only if order channel = whatsapp)
+        //  Provider-agnostic — notify_send_media() routes via Twilio or Meta
+        //  depending on WA_PROVIDER env. For web orders, the success.php page
+        //  will surface the PDF download button itself.
+        // ════════════════════════════════════════════════════════════════════
+        if ($order['channel'] === 'whatsapp') {
+            try {
+                require_once __DIR__ . '/../../includes/notify.php';
+                $cust  = CustomerRepo::findById((int) $order['customer_id']);
+                $phone = (string) ($cust['phone'] ?? '');
+
+                if ($phone !== '') {
+                    $hasPdf = $xeroPdfPublicPath !== '';
+                    $body   = "✅ *Payment confirmed!*\n\n" .
+                              "Thanks for your Hi-Service Gas order.\n" .
+                              "Order ref: *{$ref}*\n" .
+                              "Total paid: *R " . number_format((float) $order['total_amount'], 2) . "*\n\n" .
+                              ($hasPdf ? "Your VAT invoice is attached.\n\n" : "Your VAT invoice will follow shortly.\n\n") .
+                              "Our driver will WhatsApp you when they're 30 minutes out. 🚚";
+
+                    if ($hasPdf) {
+                        $publicUrl = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'hiservice.store') . $xeroPdfPublicPath;
+                        notify_send_media(
+                            $phone,
+                            'document',
+                            $publicUrl,
+                            $body,
+                            'Hi-Service-Invoice-' . $ref . '.pdf',
+                        );
+                        log_event('whatsapp.payment.pdf_sent', 'order', $ref, ['url' => $publicUrl]);
+                    } else {
+                        notify_send_text($phone, $body);
+                        log_event('whatsapp.payment.confirmation_sent_text_only', 'order', $ref);
+                    }
+                }
+            } catch (Throwable $e) {
+                log_to_file('payfast-itn', 'whatsapp confirmation/pdf send failed', [
+                    'err' => $e->getMessage(), 'ref' => $ref,
+                ]);
+                log_event('whatsapp.payment.send_failed', 'order', $ref, ['err' => substr($e->getMessage(), 0, 200)]);
+            }
+        }
+
     } elseif (in_array($payment_status, ['cancelled', 'failed'], true)) {
         OrderRepo::setStatus((int) $order['id'], 'failed');
         if (!empty($order['slot_id'])) {

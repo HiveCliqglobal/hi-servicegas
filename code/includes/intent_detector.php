@@ -63,6 +63,15 @@ final class IntentDetector
             return ['intent' => 'reset_to_menu', 'action' => 'show_menu', 'extracted' => $extracted, 'confidence' => 1.0];
         }
 
+        // ========== GLOBAL: talk to a person ==========
+        // Customer typed "help me", "speak to someone", "talk to a person", "human" etc.
+        // at ANY state → AgentSupervisor's ESCALATE branch handles the routing + admin
+        // notification. We return the cancel_order intent here only as a safety hatch —
+        // supervisor classifies "help me" → ESCALATE via Haiku before we get here.
+        if (preg_match('/\b(help me|talk to (a |the )?(person|human|someone|agent|staff)|speak to|need help|real person|live agent)\b/i', $msg)) {
+            return ['intent' => 'request_human_help', 'action' => 'request_human_help', 'extracted' => $extracted, 'confidence' => 1.0];
+        }
+
         // ========== Per-state pattern matching ==========
         switch ($currentStep) {
 

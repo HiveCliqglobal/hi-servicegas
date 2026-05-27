@@ -111,7 +111,35 @@ final class Conversation
         // Persist updated session
         self::saveSession($phone, $trans['next_step'], $stateData, $session, $trans['should_clear'] ?? false);
 
+        // Universal exit footer — every in-flow reply gets a single-line reminder
+        // that the customer can ALWAYS escape with CANCEL, restart with MENU, or
+        // talk to a person with HELP. Skipped on terminal/menu replies so the menu
+        // itself isn't double-prompted with its own footer.
+        $reply = self::withExitFooter($reply, $trans['next_step']);
+
         return $reply;
+    }
+
+    /**
+     * Append the universal CANCEL / MENU / HELP exit footer to mid-flow replies.
+     * Skipped on menu / cancelled / general_help / terminal states because those
+     * messages already carry their own exit guidance or aren't in-flow.
+     */
+    private static function withExitFooter(string $reply, string $nextStep): string
+    {
+        // States where adding the footer would be noisy/redundant
+        $skip = [
+            StateMachine::S_MENU,
+            StateMachine::S_CANCELLED,
+            StateMachine::S_GENERAL_HELP,
+        ];
+        if (in_array($nextStep, $skip, true)) return $reply;
+
+        // Don't double-up if the reply already mentions the exit options
+        if (stripos($reply, 'CANCEL') !== false && stripos($reply, 'MENU') !== false) return $reply;
+        if (str_contains($reply, '💡')) return $reply;
+
+        return $reply . "\n\n_💡 *CANCEL* exit · *MENU* restart · *HELP* talk to a person_";
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -183,6 +211,9 @@ final class Conversation
             case 'log_callback_lead':
                 return self::actLogCallbackLead($text, $phone, $session, $stateData, $trans);
 
+            case 'request_human_help':
+                return self::actRequestHumanHelp($phone, $session, $text);
+
             case 'bridge_to_ghl':
                 return self::tplGeneralHelp();
 
@@ -215,7 +246,7 @@ final class Conversation
             return "Welcome back" . ($firstName ? ", {$firstName}" : '') . "! 👋\n\nYour last order:\n{$summary}\n\n*Reply with:*\n*1* - to repeat this order\n*2* - to place a different order";
         }
 
-        $trans['next_step'] = StateMachine::S_SHOWING_PRODUCTS;
+        $trans['next_step'] = StateMachine::S_COLLECTING_ORDER_DETAILS;
         return "Welcome back" . ($firstName ? ", {$firstName}" : '') . "! 👋\n\n" . self::tplProductCatalogue();
     }
 
@@ -443,7 +474,7 @@ final class Conversation
         $cart      = $stateData['cart']       ?? [];
         $cartTotal = (float) ($stateData['cart_total'] ?? 0);
         if (empty($cart) || $cartTotal <= 0) {
-            $trans['next_step'] = StateMachine::S_SHOWING_PRODUCTS;
+            $trans['next_step'] = StateMachine::S_COLLECTING_ORDER_DETAILS;
             log_to_file('whatsapp', 'payment aborted — empty cart', ['phone' => $phone, 'state' => $stateData]);
             return "Hmm, your cart is empty — let's pick your products.\n\n" . self::tplProductCatalogue();
         }
@@ -526,7 +557,7 @@ final class Conversation
 
             $stateData['customer_id'] = $custId;
             $stateData['address_id']  = $addrId;
-            $trans['next_step'] = StateMachine::S_SHOWING_PRODUCTS;
+            $trans['next_step'] = StateMachine::S_COLLECTING_ORDER_DETAILS;
 
             $firstName = self::firstName($fullName);
             return "Thanks" . ($firstName ? " {$firstName}" : '') . "! You're all set up. ✅\n\n" . self::tplProductCatalogue();
@@ -592,7 +623,7 @@ final class Conversation
 
     private static function tplMenu(): string
     {
-        return "*Hi-Service Gas* 🔥\n\nHow can we help today?\n\n*1* - Order LPG gas\n*2* - General help / questions\n\nReply with the number above.";
+        return "*Hi-Service Gas* 🔥\n\nHow can we help today?\n\n*1* - Order LPG gas\n*2* - General help / questions\n\nReply with the number above.\n\n_💡 Tip: Type *CANCEL* anytime to exit, or *MENU* to come back here._";
     }
 
     private static function tplGeneralHelp(): string
@@ -614,6 +645,7 @@ final class Conversation
             $msg .= "*{$it['letter']}* - {$name} — R " . number_format($price, 2) . "\n";
         }
         $msg .= "\n*Reply with the letter + quantity.*\n*Example:* B2  (= 2 × 5kg LPG)";
+        $msg .= "\n\n_💡 Type *CANCEL* to exit, or *MENU* to start over._";
         return $msg;
     }
 
@@ -699,6 +731,53 @@ final class Conversation
     private static function checkStock(array $cartLines): array
     {
         return ProductRepo::checkCartStock($cartLines);
+    }
+
+    /**
+     * Global HELP intent — fires when customer types "help me" / "talk to a person"
+     * at ANY state. Pings admin via GHL (Telegram will plug in here later) WITHOUT
+     * resetting the customer's state — so the human picks up the conversation thread
+     * exactly where they were.
+     */
+    private static function actRequestHumanHelp(string $phone, array $session, string $text): string
+    {
+        $currentStep = (string) ($session['current_step'] ?: StateMachine::S_MENU);
+        try {
+            $custId = (int) ($session['customer_id'] ?? 0);
+            if (!$custId) {
+                $existing = CustomerRepo::findByPhone($phone);
+                if ($existing) $custId = (int) $existing['id'];
+            }
+            log_event('conversation.help_requested', 'customer', $custId ? (string) $custId : null, [
+                'phone'        => $phone,
+                'state'        => $currentStep,
+                'last_message' => substr($text, 0, 200),
+            ]);
+            if ($custId) {
+                require_once __DIR__ . '/ghl.php';
+                $cust = CustomerRepo::findById($custId);
+                $gid  = GHL::syncCustomer($cust);
+                if ($gid) {
+                    GHL::addTag($gid, ['whatsapp-help-requested', 'needs-human-pickup']);
+                    $name = trim((string) ($cust['full_name'] ?? '')) ?: $phone;
+                    GHL::notifyUser(
+                        GHL::USER_GAS,
+                        "Customer asked to speak to a person",
+                        "Customer: *{$name}* ({$phone})\n" .
+                        "Was at step: *{$currentStep}*\n" .
+                        "Their message: \"{$text}\"\n\n" .
+                        "Reach out via WhatsApp — their conversation is paused at that step, anything you reply picks up the thread."
+                    );
+                }
+            }
+        } catch (Throwable $e) {
+            log_to_file('whatsapp', 'help-request notify failed', ['err' => $e->getMessage()]);
+        }
+
+        return "Got it — I'm letting our team know you'd like to speak to someone. 👍\n\n" .
+               "They'll WhatsApp or call you on this number shortly.\n\n" .
+               "Office hours: *Mon-Fri 08:00-17:00 · Sat 08:00-13:00*\n" .
+               "Or call us directly: *021 492 8515*";
     }
 
     private static function actRequestCallbackDetails(string $phone, array &$stateData, array &$trans): string
@@ -834,10 +913,17 @@ final class Conversation
                    "_Type MENU if you'd like to start fresh in the meantime._";
         }
 
-        // Get valid intents for this state. If none, fall back to the static template.
+        // Get valid intents for this state. If none, give the customer a clear nudge
+        // instead of silently showing the menu (which is what caused the friend's loop
+        // bug on 26 May — typing "1" at showing_products dead-ended through clarify →
+        // empty validIntents → menu shown → looked like a reset).
         $validIntents = IntentDetector::validIntentsFor($currentStep);
         if (empty($validIntents)) {
-            return $fallbackTemplate ?: self::tplMenu();
+            log_to_file('whatsapp', 'smart_clarify — no valid intents for state', [
+                'state' => $currentStep, 'phone' => $phone, 'message' => substr($text, 0, 80),
+            ]);
+            return ($fallbackTemplate ?: "Sorry, I'm not sure what you mean here.") .
+                   "\n\n_Type *MENU* to start over or *CANCEL* to exit._";
         }
 
         // Build a Haiku call. Strict JSON output, low cost.

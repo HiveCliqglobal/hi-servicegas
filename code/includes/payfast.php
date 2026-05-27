@@ -68,10 +68,17 @@ function payfast_build_pay_link(array $order): string
     $first = $nameParts[0] ?? '';
     $last  = implode(' ', array_slice($nameParts, 1));
 
+    // Build return_url with the order_reference appended so the success page
+    // knows which order was just paid (PayFast doesn't echo m_payment_id back
+    // on return — we have to encode it ourselves).
+    $baseReturn  = rtrim((string) env('PAYFAST_RETURN_URL', 'https://hiservice.store/shop/success.php'), '?&');
+    $returnUrl   = $baseReturn . (str_contains($baseReturn, '?') ? '&' : '?')
+                                . 'ref=' . rawurlencode((string) $order['order_reference']);
+
     $data = [
         'merchant_id'      => $merchantId,
         'merchant_key'     => $merchantKey,
-        'return_url'       => (string) env('PAYFAST_RETURN_URL', 'https://hiservice.store/shop/success.php'),
+        'return_url'       => $returnUrl,
         'cancel_url'       => (string) env('PAYFAST_CANCEL_URL', 'https://hiservice.store/shop/cancelled.php'),
         'notify_url'       => (string) env('PAYFAST_NOTIFY_URL', 'https://hiservice.store/api/webhook/payfast-itn.php'),
         'name_first'       => $first,

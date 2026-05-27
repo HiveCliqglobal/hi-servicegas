@@ -68,7 +68,7 @@ include __DIR__ . '/_header.php';
 
     <form method="post" action="/shop/pay.php" class="step-form">
       <button type="submit" class="btn btn-primary btn-block" style="font-size:17px">Pay <?= h(money($cart['total'])) ?> with PayFast →</button>
-      <p class="muted small step-note">Payment expires in 24 hours. You'll get a PDF invoice on WhatsApp after payment.</p>
+      <p class="muted small step-note">Payment link is valid for 24 hours. <b>The moment you pay, your VAT invoice (PDF) is generated in Xero and sent to your WhatsApp — usually within 5 seconds.</b></p>
       <p class="muted small" style="text-align:center;margin-top:10px"><a href="/shop/browse.php">← Edit items</a> &nbsp;·&nbsp; <a href="/shop/slot.php">← Change slot</a></p>
     </form>
   </div>

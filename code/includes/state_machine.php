@@ -72,6 +72,17 @@ final class StateMachine
             ];
         }
 
+        // Global human-help request — escalates to admin via GHL, keeps state put so
+        // the human can pick up the conversation thread where the customer was.
+        if ($intent === 'request_human_help') {
+            return [
+                'next_step'         => $currentStep,           // STAY at current step
+                'action'            => 'request_human_help',
+                'response_template' => null,
+                'should_clear'      => false,
+            ];
+        }
+
         $stateMachine = self::definition();
         $stepTransitions = $stateMachine[$currentStep] ?? null;
 
@@ -118,14 +129,14 @@ final class StateMachine
             // After customer lookup, awaiting choice (returning customers)
             self::S_AWAITING_ORDER_CHOICE => [
                 'repeat_order' => ['next_step' => self::S_AWAITING_ADDRESS_CHOICE, 'action' => 'confirm_current_address', 'response_template' => null],
-                'new_order'    => ['next_step' => self::S_SHOWING_PRODUCTS,        'action' => 'get_product_catalog',     'response_template' => null],
+                'new_order'    => ['next_step' => self::S_COLLECTING_ORDER_DETAILS,        'action' => 'get_product_catalog',     'response_template' => null],
                 '_default'     => ['next_step' => self::S_AWAITING_ORDER_CHOICE,   'action' => 'clarify', 'response_template' =>
                     "Please reply with:\n1 - to repeat your last order\n2 - to place a different order"],
             ],
 
             self::S_NEW_ORDER_CLARIFICATION => [
                 'keep_order' => ['next_step' => self::S_AWAITING_ADDRESS_CHOICE, 'action' => 'confirm_current_address', 'response_template' => null],
-                'new_order'  => ['next_step' => self::S_SHOWING_PRODUCTS,        'action' => 'get_product_catalog',     'response_template' => null],
+                'new_order'  => ['next_step' => self::S_COLLECTING_ORDER_DETAILS,        'action' => 'get_product_catalog',     'response_template' => null],
                 '_default'   => ['next_step' => self::S_NEW_ORDER_CLARIFICATION, 'action' => 'clarify', 'response_template' =>
                     "Please reply with:\n1 - to keep your previous order\n2 - to start a new order"],
             ],
@@ -145,7 +156,7 @@ final class StateMachine
 
             // Confirm-details prompt — UNIFIED (bug fix: n8n had two definitions)
             self::S_CONFIRM_NEW_DETAILS => [
-                'current_details' => ['next_step' => self::S_SHOWING_PRODUCTS,                'action' => 'get_product_catalog',          'response_template' => null],
+                'current_details' => ['next_step' => self::S_COLLECTING_ORDER_DETAILS,                'action' => 'get_product_catalog',          'response_template' => null],
                 'new_details'     => ['next_step' => self::S_AWAITING_EXISTING_CUST_DETAILS,  'action' => 'awaiting_existing_customer_details',
                                       'response_template' => 'Please provide your updated customer details.'],
                 '_default'        => ['next_step' => self::S_CONFIRM_NEW_DETAILS,             'action' => 'clarify',
@@ -248,7 +259,7 @@ final class StateMachine
             // (try a different product, leave their number, or cancel) so they never
             // end up in a dead-end "your order is locked but unfulfillable" state.
             self::S_OUT_OF_STOCK => [
-                'try_other_product' => ['next_step' => self::S_SHOWING_PRODUCTS,          'action' => 'get_product_catalog',         'response_template' => null],
+                'try_other_product' => ['next_step' => self::S_COLLECTING_ORDER_DETAILS,          'action' => 'get_product_catalog',         'response_template' => null],
                 'request_callback'  => ['next_step' => self::S_AWAITING_CALLBACK_DETAILS, 'action' => 'request_callback_details',    'response_template' => null],
                 '_default'          => ['next_step' => self::S_OUT_OF_STOCK,              'action' => 'clarify',
                                         'response_template' => "Please reply with:\n*A* - try a different product\n*B* - leave your number, we'll call when it's back in stock\n*Cancel* - cancel this order"],
@@ -267,7 +278,7 @@ final class StateMachine
                     'response_template' => 'Perfect! Processing your payment link... 💳',
                 ],
                 'new_order' => [
-                    'next_step' => self::S_SHOWING_PRODUCTS, 'action' => 'get_product_catalog', 'response_template' => null,
+                    'next_step' => self::S_COLLECTING_ORDER_DETAILS, 'action' => 'get_product_catalog', 'response_template' => null,
                 ],
                 'cancel_order' => [
                     'next_step' => self::S_CANCELLED, 'action' => 'cancel_and_clear',

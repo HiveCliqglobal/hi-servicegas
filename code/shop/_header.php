@@ -9,7 +9,7 @@
 </head>
 <body class="shop-body">
 
-<div class="demo-banner">🚧 <b>Demo build</b> · PayFast, Xero & WhatsApp coming online next — full flow works end-to-end already</div>
+<div class="demo-banner">✅ Pay with PayFast — your VAT invoice arrives <b>instantly</b> on WhatsApp from Xero</div>
 
 <header class="shop-header">
   <div class="container shop-header-inner">
