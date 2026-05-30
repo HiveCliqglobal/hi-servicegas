@@ -225,7 +225,18 @@ final class Xero
 
     /**
      * Find or create a Xero contact for a Hi-Service customer.
-     * Matches first by phone, then by email. Creates with full_name if neither matches.
+     *
+     * Lookup order (locked 30 May after the WHERE-clause-on-Phones bug):
+     *   1. Cached `customers.xero_contact_id` — if set, return immediately
+     *   2. WHERE clause on EmailAddress — only field Xero reliably supports
+     *      in where filters that we have access to
+     *   3. searchTerm fuzzy match on phone — Xero's documented way to search
+     *      across phone/contact fields (WHERE on Phones.PhoneNumber does NOT
+     *      work — returns HTTP 400 QueryParseException)
+     *   4. Create a new contact with the customer's name/email/phone
+     *
+     * Caller (XeroSync::pushInvoice) already caches the returned ID back to
+     * `customers.xero_contact_id` so step 1 hits on subsequent orders.
      *
      * @return string The Xero ContactID (UUID).
      */
@@ -235,18 +246,46 @@ final class Xero
         $email = strtolower(trim((string) ($customer['email'] ?? '')));
         $name  = trim((string) ($customer['full_name'] ?? '')) ?: ('+' . $phone);
 
-        // Search by phone first
-        if ($phone !== '') {
-            $resp = self::get('/Contacts?where=' . rawurlencode("Phones.PhoneNumber!=null&&Phones.PhoneNumber=\"{$phone}\""));
-            if (!empty($resp['Contacts'][0]['ContactID'])) return (string) $resp['Contacts'][0]['ContactID'];
-        }
-        // Then by email
+        // 1. Cached ID on customers row — instant path for repeat customers
+        $cachedId = trim((string) ($customer['xero_contact_id'] ?? ''));
+        if ($cachedId !== '') return $cachedId;
+
+        // 2. Search by email via WHERE — this query works on Xero's API
         if ($email !== '') {
-            $resp = self::get('/Contacts?where=' . rawurlencode("EmailAddress=\"{$email}\""));
-            if (!empty($resp['Contacts'][0]['ContactID'])) return (string) $resp['Contacts'][0]['ContactID'];
+            try {
+                $resp = self::get('/Contacts?where=' . rawurlencode('EmailAddress=="' . $email . '"'));
+                if (!empty($resp['Contacts'][0]['ContactID'])) {
+                    return (string) $resp['Contacts'][0]['ContactID'];
+                }
+            } catch (Throwable $e) {
+                log_to_file('xero', 'contact email lookup failed (continuing to phone/create)', ['err' => $e->getMessage()]);
+            }
         }
 
-        // Create
+        // 3. Search by phone via searchTerm (fuzzy across all fields).
+        //    NOTE: We previously used a WHERE clause on Phones.PhoneNumber here
+        //    which raised HTTP 400 "No property or field 'PhoneNumber' exists in
+        //    type 'Phones'". searchTerm is the documented Xero way to search
+        //    phones — it does fuzzy across Name + ContactNumber + Phones.
+        if ($phone !== '') {
+            try {
+                $resp = self::get('/Contacts?searchTerm=' . rawurlencode($phone));
+                foreach (($resp['Contacts'] ?? []) as $c) {
+                    foreach (($c['Phones'] ?? []) as $p) {
+                        $pn = preg_replace('/[^0-9]/', '', (string) ($p['PhoneNumber'] ?? ''));
+                        $needle = preg_replace('/[^0-9]/', '', $phone);
+                        // Match on last 9 digits (handles 27/0 prefix variance)
+                        if ($pn !== '' && $needle !== '' && substr($pn, -9) === substr($needle, -9)) {
+                            return (string) $c['ContactID'];
+                        }
+                    }
+                }
+            } catch (Throwable $e) {
+                log_to_file('xero', 'contact phone lookup failed (continuing to create)', ['err' => $e->getMessage()]);
+            }
+        }
+
+        // 4. Create new
         $body = ['Contacts' => [[
             'Name'         => $name,
             'EmailAddress' => $email ?: null,
@@ -264,15 +303,29 @@ final class Xero
      */
     public static function createInvoice(array $params): array
     {
+        // Build line items WITHOUT ItemCode by default. Our local products.code
+        // values (LPG-5KG / LPG-9KG / etc.) don't necessarily match Xero's items
+        // catalog (Hi Service R&D org uses codes like LPG-PRO/8kg). Sending an
+        // ItemCode that isn't in Xero's catalog fails with HTTP 400 ValidationException.
+        // Free-text line items work fine — Description + Quantity + UnitAmount +
+        // AccountCode is enough for a valid AUTHORISED invoice. Inventory tracking
+        // requires the codes to match, which is a future opt-in (see RULE 1 in memory:
+        // local catalogue stays canonical for customer-facing; Xero sync is one-way
+        // PULL with admin curation).
         $lines = [];
         foreach (($params['line_items'] ?? []) as $li) {
-            $lines[] = [
-                'ItemCode'    => (string) ($li['code'] ?? ''),
+            $line = [
                 'Description' => (string) ($li['description'] ?? $li['name'] ?? ''),
                 'Quantity'    => (float)  ($li['qty'] ?? 1),
                 'UnitAmount'  => (float)  ($li['unit_amount'] ?? 0),
                 'AccountCode' => (string) ($li['account_code'] ?? '200'),  // 200 = Sales (Xero default)
             ];
+            // Only include ItemCode if explicitly passed in AND non-empty.
+            // Allows future inventory-tracked invoicing once admin maps codes.
+            if (!empty($li['code']) && !empty($li['use_xero_item'])) {
+                $line['ItemCode'] = (string) $li['code'];
+            }
+            $lines[] = $line;
         }
 
         $body = ['Invoices' => [[
