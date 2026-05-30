@@ -883,6 +883,28 @@ final class Conversation
         $stateData['unclear_state'] = $currentStep;
         $stateData['unclear_count'] = $unclearCount;
 
+        // ─── CRITICAL-STATE accelerated escalation ───
+        // At payment-confirm or slot-pick states, we're 1 step away from money in
+        // the door. If a customer struggles here we DON'T wait for strike 4 — we
+        // ping admin at strike 2 so a human can rescue the sale before the customer
+        // drops off. State stays put so the human can pick up the thread instantly.
+        $criticalStates = [
+            StateMachine::S_AWAITING_PAYMENT_CONFIRMATION,
+            StateMachine::S_AWAITING_SLOT_SELECTION,
+            StateMachine::S_AWAITING_ADDRESS_CHOICE,
+            StateMachine::S_OUT_OF_STOCK,
+        ];
+        if ($unclearCount >= 2 && in_array($currentStep, $criticalStates, true) && empty($stateData['stuck_alert_sent'])) {
+            self::escalateStuckCustomer($phone, $session, $currentStep, $text, $unclearCount);
+            $stateData['stuck_alert_sent'] = true;
+            log_event('conversation.critical_state_escalated', null, $phone, [
+                'state' => $currentStep, 'strike' => $unclearCount,
+            ]);
+            // Don't return early — let Haiku still produce a helpful clarification,
+            // BUT mention that someone is also being notified. The clarification
+            // PLUS the human-incoming reassurance keeps the customer engaged.
+        }
+
         // ─── 3rd strike: exit hatch (state stays put) ───
         // At 3 consecutive unclears, offer clear options — but DO NOT reset state.
         // Customer can still recover into the order with their next reply if they
@@ -895,7 +917,8 @@ final class Conversation
                    "Three options:\n" .
                    "• Try answering one more time using the format above\n" .
                    "• Type *MENU* to start over\n" .
-                   "• Or call us on *021 492 8515* — a human can take over right away";
+                   "• Or call us on *021 492 8515* — a human can take over right away\n\n" .
+                   self::answerOptionsFor($currentStep);
         }
 
         // ─── 4th strike and beyond: silently ping admin + offer human handoff ───
@@ -972,10 +995,29 @@ final class Conversation
                 );
             }
 
-            // Otherwise return Haiku's context-aware clarification message
-            return $message !== ''
-                ? $message
-                : ($fallbackTemplate ?: "Sorry, I didn't catch that. " . self::tplMenu());
+            // Build the final reply: Haiku acknowledgment + literal answer options +
+            // (if critical-state escalation just fired) reassurance that admin was
+            // pinged. Haiku tends to paraphrase the question without the actual
+            // trigger characters — PHP appends them deterministically so customers
+            // always see exactly what to type.
+            $base = $message !== '' ? $message : ($fallbackTemplate ?: "Sorry, I didn't catch that.");
+            $options = self::answerOptionsFor($currentStep);
+            if ($options !== '' && stripos($base, $options) === false) {
+                $base = rtrim($base) . "\n\n" . $options;
+            }
+
+            // If we just escalated this turn at a critical state, reassure the
+            // customer that help is on the way — but stay in flow.
+            if (!empty($stateData['stuck_alert_sent']) && in_array($currentStep, [
+                StateMachine::S_AWAITING_PAYMENT_CONFIRMATION,
+                StateMachine::S_AWAITING_SLOT_SELECTION,
+                StateMachine::S_AWAITING_ADDRESS_CHOICE,
+                StateMachine::S_OUT_OF_STOCK,
+            ], true) && ($unclearCount === 2)) {
+                $base .= "\n\n_📞 I've also let our team know — someone will check in shortly. You can keep going with the order or wait for them._";
+            }
+
+            return $base;
 
         } catch (Throwable $e) {
             // Claude unavailable / API error — fall back to the static template.
@@ -1002,11 +1044,12 @@ You decide ONE of three things:
      intent name + a confidence score 0-1.
   2. If the customer's message is genuinely off-script (unrelated question,
      gibberish, request for help) — return intent="unclear" and write a SHORT
-     (1-2 line) friendly clarification that:
-       - Acknowledges what they actually said (don't ignore them)
-       - Restates the question in different words — never repeat the original
-         prompt verbatim
-       - Lists the valid choices clearly
+     (1 line, max 15 words) friendly clarification that:
+       - Acknowledges what they said briefly ("Got it!" / "Thanks!")
+       - Says one short sentence about what we need at this step
+       - DO NOT list the answer options — our PHP code appends them after
+         your message. If you also list them you'll cause duplication.
+       - DO NOT repeat the original prompt verbatim.
   3. NEVER invent new intent names. NEVER claim prices/dates/areas. NEVER
      leak that you are an AI. Stay friendly + professional, SA English, no
      emojis unless one fits naturally.
@@ -1080,6 +1123,58 @@ PROMPT;
         } catch (Throwable $e) {
             log_to_file('whatsapp', 'escalateStuckCustomer failed', ['err' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * Literal answer-format options for each state — appended to every
+     * smart_clarify response so customers always see EXACTLY what to type.
+     * Haiku tends to paraphrase ("repeat or different one?") without the
+     * actual trigger characters; this block guarantees the trigger chars
+     * are always visible.
+     *
+     * Returns '' for states where there isn't a clean option set (open-text
+     * states like name/address collection have their own templates).
+     */
+    private static function answerOptionsFor(string $currentStep): string
+    {
+        return match ($currentStep) {
+            StateMachine::S_MENU,
+            StateMachine::S_AWAITING_ORDER_CHOICE,
+            StateMachine::S_NEW_ORDER_CLARIFICATION
+                => "*Reply with:*\n*1* - to repeat your last order\n*2* - to place a different order",
+
+            StateMachine::S_AWAITING_ADDRESS_CHOICE
+                => "*Reply with:*\n*S* or *Y* - keep my saved address\n*D* or *N* - different address",
+
+            StateMachine::S_AWAITING_SLOT_SELECTION
+                => "*Reply with:*\n*A* - the morning slot shown\n*B* - the afternoon slot shown\nOr type a date like *28/05/2026*",
+
+            StateMachine::S_AWAITING_PAYMENT_CONFIRMATION
+                => "*Reply with:*\n*P* - continue to payment\n*D* - place a different order\n*Cancel* - cancel this order",
+
+            StateMachine::S_CONFIRM_NEW_DETAILS
+                => "*Reply with:*\n*Y* - keep my current details\n*N* - update my details",
+
+            StateMachine::S_OUT_OF_STOCK
+                => "*Reply with:*\n*A* - try a different product\n*B* - leave your number, we'll call when it's back\n*Cancel* - cancel this order",
+
+            StateMachine::S_COLLECTING_ORDER_DETAILS
+                => "*Reply with the product letter + quantity.*\n*Example:* B2  (= 2 × 5kg LPG)",
+
+            StateMachine::S_AWAITING_STREET_CODE
+                => "*Reply with your 4-digit postal code.*\n*Example:* 7140",
+
+            StateMachine::S_AWAITING_NEW_CUSTOMER_DETAILS
+                => "*Reply with 3 lines:*\n1. Your full name\n2. Street, suburb, city, postal code\n3. Email (optional)",
+
+            StateMachine::S_AWAITING_NEW_ADDRESS
+                => "*Reply with each on its own line:*\n1. Street + number\n2. Suburb\n3. City\n4. Postal code",
+
+            StateMachine::S_AWAITING_CALLBACK_DETAILS
+                => "*Reply with your name* so our team knows who to call.",
+
+            default => '',
+        };
     }
 
     private static function buildSmartClarifyUserMessage(string $currentStep, string $text, array $validIntents, array $stateData, string $phone): string

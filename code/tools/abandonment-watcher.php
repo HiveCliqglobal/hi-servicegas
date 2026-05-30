@@ -37,7 +37,10 @@ require_once __DIR__ . '/../includes/ghl.php';
 $stats = ['session_stuck' => 0, 'cart_abandoned' => 0, 'payment_abandoned' => 0, 'driver_no_show' => 0];
 
 // ════════════════════════════════════════════════════════════════════
-//  Pattern 1 — Session at non-menu state, idle for > 30 min
+//  Pattern 1 — Session at non-menu state, idle for > 5 min
+//  Tightened from 30 min to 5 min on 26 May to give admin near-real-time
+//  awareness when customers stall mid-flow. Combined with the 2 min cron,
+//  worst-case admin notification latency is ~7 min from stall.
 // ════════════════════════════════════════════════════════════════════
 $rows = db()->query("
     SELECT s.phone, s.current_step, s.customer_id, s.updated_at,
@@ -45,7 +48,7 @@ $rows = db()->query("
       FROM sessions s
      WHERE s.current_step NOT IN ('menu', 'cancelled', 'general_help')
        AND s.expires_at > NOW()
-       AND s.updated_at < NOW() - INTERVAL 30 MINUTE
+       AND s.updated_at < NOW() - INTERVAL 5 MINUTE
 ")->fetchAll();
 
 foreach ($rows as $r) {
@@ -82,13 +85,13 @@ foreach ($rows as $r) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  Pattern 2 — Order in 'cart' status > 30 min
+//  Pattern 2 — Order in 'cart' status > 10 min (tightened from 30 min)
 // ════════════════════════════════════════════════════════════════════
 $rows = db()->query("
     SELECT o.id, o.order_reference, o.customer_id, o.total_amount, o.created_at
       FROM orders o
      WHERE o.status = 'cart'
-       AND o.created_at < NOW() - INTERVAL 30 MINUTE
+       AND o.created_at < NOW() - INTERVAL 10 MINUTE
        AND o.created_at > NOW() - INTERVAL 7 DAY
 ")->fetchAll();
 
@@ -126,13 +129,16 @@ foreach ($rows as $r) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  Pattern 3 — Order in 'pending_payment' > 60 min (PayFast page abandoned)
+//  Pattern 3 — Order in 'pending_payment' > 15 min (tightened from 60 min)
+//  Payment page abandonment is high-value to catch early — customer made
+//  the decision to buy but didn't complete. 15 min gives them time to fill
+//  the card form but pings admin before they're permanently lost.
 // ════════════════════════════════════════════════════════════════════
 $rows = db()->query("
     SELECT o.id, o.order_reference, o.customer_id, o.total_amount, o.created_at
       FROM orders o
      WHERE o.status = 'pending_payment'
-       AND o.created_at < NOW() - INTERVAL 60 MINUTE
+       AND o.created_at < NOW() - INTERVAL 15 MINUTE
        AND o.created_at > NOW() - INTERVAL 7 DAY
 ")->fetchAll();
 
@@ -170,7 +176,9 @@ foreach ($rows as $r) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  Pattern 4 — Order 'paid' > 4 hrs but no delivery
+//  Pattern 4 — Order 'paid' > 1 hr but no delivery (tightened from 4 hrs)
+//  Stays at 1 hour — even if driver is en-route, an hour without delivery
+//  is worth a passive admin check (not panic, but worth knowing).
 // ════════════════════════════════════════════════════════════════════
 $rows = db()->query("
     SELECT o.id, o.order_reference, o.customer_id, o.assigned_driver_id, o.paid_at,
@@ -179,7 +187,7 @@ $rows = db()->query("
       LEFT JOIN drivers d ON d.id = o.assigned_driver_id
      WHERE o.status = 'paid'
        AND o.paid_at IS NOT NULL
-       AND o.paid_at < NOW() - INTERVAL 4 HOUR
+       AND o.paid_at < NOW() - INTERVAL 1 HOUR
        AND o.delivered_at IS NULL
        AND o.paid_at > NOW() - INTERVAL 7 DAY
 ")->fetchAll();
