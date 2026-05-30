@@ -32,7 +32,17 @@ foreach ($rows as $r) {
     }
 }
 
-$pendingCount = (int) db()->query("SELECT COUNT(*) FROM orders WHERE status = 'paid'")->fetchColumn();
+// Mirrors the today.php filter so the badge count is honest (no demo seeds,
+// no stale-slot leftovers).
+$pendingCount = (int) db()->query(
+    "SELECT COUNT(*) FROM orders o
+     LEFT JOIN slots s ON s.id = o.slot_id
+     WHERE o.status = 'paid' AND o.is_demo = 0
+       AND (
+            s.delivery_date >= CURDATE() - INTERVAL 1 DAY
+            OR (s.delivery_date IS NULL AND o.paid_at >= NOW() - INTERVAL 7 DAY)
+       )"
+)->fetchColumn();
 
 include __DIR__ . '/_header.php';
 ?>

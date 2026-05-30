@@ -7,7 +7,10 @@ $drv = current_driver();
 $nav = 'today';
 $pageTitle = 'Today · Hi-Service Driver';
 
-// Pending = paid orders not yet delivered (incoming queue)
+// Pending = paid + real (not seed-demo) orders not yet delivered.
+// Filters out historical demo seeds (is_demo=1) and stale orders whose slot
+// date is more than 1 day in the past, so the driver sees only operationally
+// relevant work. Orders with no slot at all still show if paid in the last 7 days.
 $pending = db()->query(
     "SELECT o.*, c.full_name, c.phone AS customer_phone,
             a.line1, a.line2, a.city, a.postal_code,
@@ -19,7 +22,12 @@ $pending = db()->query(
      LEFT JOIN addresses a ON a.id = o.address_id
      LEFT JOIN slots     s ON s.id = o.slot_id
      WHERE o.status = 'paid'
+       AND o.is_demo = 0
        AND (o.assigned_driver_id IS NULL OR o.assigned_driver_id = " . (int) $drv['id'] . ")
+       AND (
+            s.delivery_date >= CURDATE() - INTERVAL 1 DAY
+            OR (s.delivery_date IS NULL AND o.paid_at >= NOW() - INTERVAL 7 DAY)
+       )
      ORDER BY s.delivery_date ASC, s.time_block ASC, o.paid_at ASC
      LIMIT 50"
 )->fetchAll();

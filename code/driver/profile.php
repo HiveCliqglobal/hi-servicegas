@@ -12,7 +12,16 @@ $stmt = db()->prepare("SELECT COUNT(*) FROM orders WHERE assigned_driver_id = :i
 $stmt->execute([':id' => $drv['id']]);
 $lifetime = (int) $stmt->fetchColumn();
 
-$pendingCount = (int) db()->query("SELECT COUNT(*) FROM orders WHERE status='paid'")->fetchColumn();
+// Mirrors today.php filter — no demo seeds, no stale-slot leftovers
+$pendingCount = (int) db()->query(
+    "SELECT COUNT(*) FROM orders o
+     LEFT JOIN slots s ON s.id = o.slot_id
+     WHERE o.status = 'paid' AND o.is_demo = 0
+       AND (
+            s.delivery_date >= CURDATE() - INTERVAL 1 DAY
+            OR (s.delivery_date IS NULL AND o.paid_at >= NOW() - INTERVAL 7 DAY)
+       )"
+)->fetchColumn();
 
 $row = db()->prepare("SELECT vehicle_reg, last_login_at, email FROM drivers WHERE id = :id");
 $row->execute([':id' => $drv['id']]);
