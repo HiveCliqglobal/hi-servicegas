@@ -450,14 +450,25 @@ final class Conversation
         }
 
         $stateData['slot_id'] = (int) $slotId;
-        $slot = SlotRepo::findById((int) $slotId);
+        $slot  = SlotRepo::findById((int) $slotId);
         $label = $slot ? SlotRepo::displayLabel($slot) : 'your selected slot';
 
-        $trans['next_step'] = StateMachine::S_AWAITING_PAYMENT_CONFIRMATION;
+        // Park at slot-confirm so the user gets an explicit readback before we
+        // generate the PayFast link. The total goes IN this message so we don't
+        // need a second payment-preview screen afterwards.
+        $trans['next_step'] = StateMachine::S_AWAITING_SLOT_CONFIRM;
 
         $total = number_format((float) ($stateData['cart_total'] ?? 0), 2);
 
-        return "✅ Slot reserved: *{$label}*\n\n*Order total: R {$total}*\n\n*Reply with:*\n*P* - to continue to payment\n*D* - to place a different order\n*Cancel* - to cancel this order";
+        // Build a compact cart summary so the customer sees exactly what they're
+        // paying for one last time before the PayFast hand-off.
+        $cartSummary = '';
+        foreach (($stateData['cart'] ?? []) as $line) {
+            $cartSummary .= "• {$line['qty']} × {$line['product_name']}\n";
+        }
+        if ($cartSummary === '') $cartSummary = "• (no items)\n";
+
+        return "You've chosen:\n🗓 *{$label}*\n\n*Your order:*\n{$cartSummary}\n*Total: R {$total}*\n\n*Reply with:*\n*Y* - Confirm slot and pay\n*N* - Pick a different time";
     }
 
     private static function actProcessPayment(string $phone, array $session, array &$stateData, array &$trans): string
@@ -600,19 +611,44 @@ final class Conversation
             return "I lost track of who you are — let's start over.\n\n" . self::tplMenu();
         }
 
+        // Validate postal code BEFORE saving — same rule the web shop applies,
+        // so we don't accept addresses outside the delivery zone.
+        $postal = trim((string) ($lines[3] ?? ''));
+        if (!preg_match('/^\d{4}$/', $postal)) {
+            return "I need a 4-digit postal code on the last line.\n\n*Example:*\n31 Example Rd\nStrand\nCape Town\n7140";
+        }
+        if (!CustomerRepo::postalCodeInZone($postal)) {
+            return "Sorry, *{$postal}* is outside our delivery area. Please send a different address, or call 021 492 8515 to check.";
+        }
+
         try {
+            $line1 = trim((string) ($lines[0] ?? ''));
+            $line2 = trim((string) ($lines[1] ?? '')) ?: null;
+            $city  = trim((string) ($lines[2] ?? ''));
+
             $addrId = CustomerRepo::addAddress($custId, [
-                'line1'       => $lines[0] ?? '',
-                'line2'       => $lines[1] ?? '',
-                'city'        => $lines[2] ?? '',
-                'postal_code' => $lines[3] ?? '',
-                'is_default'  => 0,
+                'line1'       => $line1,
+                'line2'       => $line2,
+                'city'        => $city,
+                'postal_code' => $postal,
+                'is_default'  => 1, // promote the new one to default so subsequent orders use it
             ]);
             $stateData['address_id'] = $addrId;
-            $trans['next_step'] = StateMachine::S_CHECKING_SLOTS;
-            return "Got it. Checking delivery times...\n\n" . self::actShowSlots($stateData);
+            log_event('whatsapp.address.saved', 'customer', (string) $custId, ['address_id' => $addrId, 'postal' => $postal]);
+
+            // Stop here so the user gets to confirm the captured address before we
+            // move them to slot selection. S_AWAITING_ADDRESS_CONFIRM handles Y/N.
+            $trans['next_step'] = StateMachine::S_AWAITING_ADDRESS_CONFIRM;
+
+            $readback = "📍 *" . $line1 . "*";
+            if ($line2) $readback .= "\n   " . $line2;
+            if ($city !== '') $readback .= "\n   " . $city;
+            $readback .= "\n   " . $postal;
+
+            return "Got it. We have your delivery address as:\n\n" . $readback .
+                   "\n\n*Reply with:*\n*Y* - Address is correct, continue\n*N* - I need to fix it";
         } catch (Throwable $e) {
-            log_to_file('whatsapp', 'address save failed', ['err' => $e->getMessage()]);
+            log_to_file('whatsapp', 'address save failed', ['err' => $e->getMessage(), 'cust' => $custId, 'phone' => $phone]);
             return "Couldn't save that address. Please try again, or call 021 492 8515.";
         }
     }
@@ -891,7 +927,9 @@ final class Conversation
         $criticalStates = [
             StateMachine::S_AWAITING_PAYMENT_CONFIRMATION,
             StateMachine::S_AWAITING_SLOT_SELECTION,
+            StateMachine::S_AWAITING_SLOT_CONFIRM,
             StateMachine::S_AWAITING_ADDRESS_CHOICE,
+            StateMachine::S_AWAITING_ADDRESS_CONFIRM,
             StateMachine::S_OUT_OF_STOCK,
         ];
         if ($unclearCount >= 2 && in_array($currentStep, $criticalStates, true) && empty($stateData['stuck_alert_sent'])) {
@@ -1011,7 +1049,9 @@ final class Conversation
             if (!empty($stateData['stuck_alert_sent']) && in_array($currentStep, [
                 StateMachine::S_AWAITING_PAYMENT_CONFIRMATION,
                 StateMachine::S_AWAITING_SLOT_SELECTION,
+                StateMachine::S_AWAITING_SLOT_CONFIRM,
                 StateMachine::S_AWAITING_ADDRESS_CHOICE,
+                StateMachine::S_AWAITING_ADDRESS_CONFIRM,
                 StateMachine::S_OUT_OF_STOCK,
             ], true) && ($unclearCount === 2)) {
                 $base .= "\n\n_📞 I've also let our team know — someone will check in shortly. You can keep going with the order or wait for them._";
@@ -1170,6 +1210,12 @@ PROMPT;
             StateMachine::S_AWAITING_NEW_ADDRESS
                 => "*Reply with each on its own line:*\n1. Street + number\n2. Suburb\n3. City\n4. Postal code",
 
+            StateMachine::S_AWAITING_ADDRESS_CONFIRM
+                => "*Reply with:*\n*Y* - address is correct, continue\n*N* - I need to fix it",
+
+            StateMachine::S_AWAITING_SLOT_CONFIRM
+                => "*Reply with:*\n*Y* - confirm this slot and pay\n*N* - pick a different time",
+
             StateMachine::S_AWAITING_CALLBACK_DETAILS
                 => "*Reply with your name* so our team knows who to call.",
 
@@ -1192,6 +1238,8 @@ PROMPT;
             StateMachine::S_AWAITING_STREET_CODE     => "Customer asked: 4-digit postal code",
             StateMachine::S_AWAITING_NEW_CUSTOMER_DETAILS => "Customer asked: 3 lines — name, address, email",
             StateMachine::S_AWAITING_NEW_ADDRESS     => "Customer asked: address on separate lines (street, suburb, city, postal code)",
+            StateMachine::S_AWAITING_ADDRESS_CONFIRM => "Customer asked: Y to confirm captured address, N to re-enter",
+            StateMachine::S_AWAITING_SLOT_CONFIRM    => "Customer asked: Y to confirm slot and pay, N to pick a different time",
             StateMachine::S_CONFIRM_NEW_DETAILS      => "Customer asked: Y to keep current details, N to update",
             StateMachine::S_MENU                     => "Customer asked: 1 to order gas, 2 for general help",
             StateMachine::S_OUT_OF_STOCK             => "Product they wanted is out of stock. Customer asked: A to try a different product, B to leave their name for a callback, or Cancel",

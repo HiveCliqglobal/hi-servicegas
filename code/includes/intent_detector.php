@@ -186,6 +186,24 @@ final class IntentDetector
                 }
                 return ['intent' => 'unclear', 'action' => 'clarify', 'extracted' => $extracted, 'confidence' => 0.0];
 
+            case StateMachine::S_AWAITING_ADDRESS_CONFIRM:
+                if (self::isYes($raw)) {
+                    return ['intent' => 'confirm', 'action' => null, 'extracted' => $extracted, 'confidence' => 1.0];
+                }
+                if (self::isNo($raw)) {
+                    return ['intent' => 'decline', 'action' => null, 'extracted' => $extracted, 'confidence' => 1.0];
+                }
+                return ['intent' => 'unclear', 'action' => null, 'extracted' => $extracted, 'confidence' => 0.0];
+
+            case StateMachine::S_AWAITING_SLOT_CONFIRM:
+                if (self::isYes($raw)) {
+                    return ['intent' => 'confirm', 'action' => null, 'extracted' => $extracted, 'confidence' => 1.0];
+                }
+                if (self::isNo($raw)) {
+                    return ['intent' => 'decline', 'action' => null, 'extracted' => $extracted, 'confidence' => 1.0];
+                }
+                return ['intent' => 'unclear', 'action' => null, 'extracted' => $extracted, 'confidence' => 0.0];
+
             case StateMachine::S_AWAITING_PAYMENT_CONFIRMATION:
                 if ($msg === 'p' || str_contains($msg, 'pay')) {
                     return ['intent' => 'confirm_payment', 'action' => null, 'extracted' => $extracted, 'confidence' => 1.0];

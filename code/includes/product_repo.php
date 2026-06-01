@@ -121,13 +121,32 @@ final class ProductRepo
         $errors = [];
         $total = 0.0;
 
-        foreach ($tokens as $tok) {
-            if (!preg_match('/^([A-Z])(\d+)$/', strtoupper($tok), $m)) {
-                $errors[] = "Bad token: {$tok}";
+        // Accept BOTH shapes the upstream parser may pass us:
+        //   - Associative ['C' => 2, 'B' => 1]  (current actCollectOrderDetails)
+        //   - Flat        ['C2', 'B1']          (older callers / direct uses)
+        // strict_types is on in this file, so the previous int-into-strtoupper path
+        // raised TypeError and the webhook's catch-all returned the generic "Sorry,
+        // something went wrong" to the customer. This loop handles both shapes safely.
+        $normalised = [];
+        foreach ($tokens as $key => $val) {
+            if (is_string($key) && !is_string($val)) {
+                // associative shape: key=letter, val=qty
+                $normalised[] = [strtoupper((string) $key), (int) $val];
+            } else {
+                // flat shape: val is a token like "C2"
+                if (!preg_match('/^([A-Z])(\d+)$/', strtoupper((string) $val), $m)) {
+                    $errors[] = "Bad token: " . (string) $val;
+                    continue;
+                }
+                $normalised[] = [$m[1], (int) $m[2]];
+            }
+        }
+
+        foreach ($normalised as [$letter, $qty]) {
+            if ($qty < 1) {
+                $errors[] = "Bad quantity for {$letter}";
                 continue;
             }
-            $letter = $m[1];
-            $qty    = (int) $m[2];
             if (!isset($byLetter[$letter])) {
                 $errors[] = "Unknown product letter: {$letter}";
                 continue;

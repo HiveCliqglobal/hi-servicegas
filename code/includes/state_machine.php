@@ -34,10 +34,12 @@ final class StateMachine
     public const S_COLLECTING_ORDER_DETAILS      = 'collecting_order_details';
     public const S_AWAITING_ADDRESS_CHOICE       = 'awaiting_address_choice';
     public const S_AWAITING_NEW_ADDRESS          = 'awaiting_new_address';
+    public const S_AWAITING_ADDRESS_CONFIRM      = 'awaiting_address_confirm';  // NEW: readback Y/N after capture
     public const S_CHECKING_SLOTS                = 'checking_slots';
     public const S_AWAITING_SLOT_SELECTION       = 'awaiting_slot_selection';
     public const S_CHECKING_CUSTOM_SLOT          = 'checking_custom_slot';
     public const S_BOOKING_SLOT                  = 'booking_slot';
+    public const S_AWAITING_SLOT_CONFIRM         = 'awaiting_slot_confirm';     // NEW: readback Y/N after slot pick
     public const S_AWAITING_PAYMENT_CONFIRMATION = 'awaiting_payment_confirmation';
     public const S_PROCESSING_PAYMENT            = 'processing_payment';
     public const S_CANCELLED                     = 'cancelled';
@@ -210,8 +212,12 @@ final class StateMachine
                     'next_step' => 'confirm_current_address', 'action' => 'confirm_current_address', 'response_template' => null,
                 ],
                 'address_provided' => [
-                    'next_step' => self::S_AWAITING_ADDRESS_CHOICE, 'action' => 'awaiting_new_address',
-                    'response_template' => 'Got it. Checking delivery times...',
+                    // actCaptureNewAddress now saves the row AND overrides next_step to
+                    // S_AWAITING_ADDRESS_CONFIRM (readback Y/N) before letting the user
+                    // continue to slots. Action stays `awaiting_new_address` so the same
+                    // handler runs; the next_step here is a fallback the action overrides.
+                    'next_step' => self::S_AWAITING_ADDRESS_CONFIRM, 'action' => 'awaiting_new_address',
+                    'response_template' => null,
                 ],
                 '_default' => [
                     'next_step' => self::S_AWAITING_NEW_ADDRESS, 'action' => 'clarify',
@@ -221,6 +227,25 @@ final class StateMachine
                         "1. Street address\n2. Suburb\n3. City\n4. Postal code\n\n" .
                         "*Example:*\n31 Example Road\nStrand\nCape Town\n7140\n\n" .
                         "*Reply with:*\nR - to recheck your current details\n",
+                ],
+            ],
+
+            // ════════════ Address-confirm readback (NEW) ════════════
+            // After actCaptureNewAddress has SAVED the new address, the user is parked
+            // here so they get to see the captured address back and explicitly confirm.
+            // Y → continue to slot picker. N → re-enter address. Anything else → clarify.
+            self::S_AWAITING_ADDRESS_CONFIRM => [
+                'confirm' => [
+                    'next_step' => self::S_CHECKING_SLOTS, 'action' => 'check_delivery_slots',
+                    'response_template' => 'Perfect, checking delivery times...',
+                ],
+                'decline' => [
+                    'next_step' => self::S_AWAITING_NEW_ADDRESS, 'action' => 'ask_for_address',
+                    'response_template' => "No problem. Please re-send your address, one item per line:\n\n*Street + number*\n*Suburb*\n*City*\n*4-digit postal code*",
+                ],
+                '_default' => [
+                    'next_step' => self::S_AWAITING_ADDRESS_CONFIRM, 'action' => 'clarify',
+                    'response_template' => "Please reply:\n*Y* - address is correct, continue\n*N* - I need to fix it",
                 ],
             ],
 
@@ -270,6 +295,27 @@ final class StateMachine
                 'callback_details_provided' => ['next_step' => self::S_MENU,                       'action' => 'log_callback_lead',  'response_template' => null],
                 '_default'                  => ['next_step' => self::S_AWAITING_CALLBACK_DETAILS,  'action' => 'clarify',
                                                 'response_template' => "Please send your *name* (we already have your number from this chat). Our team will reach out as soon as stock arrives.\n\n*Example:*\nShawn Lochner\n\nOr type *Cancel* to drop this."],
+            ],
+
+            // ════════════ Slot-confirm readback (NEW) ════════════
+            // After actBookSelectedSlot has tentatively chosen a slot, the user is
+            // parked here so they explicitly confirm the date/time before we generate
+            // the PayFast link. The readback already includes the order total, so
+            // Y goes straight to the payment-link generator (process_payment) rather
+            // than parking again at S_AWAITING_PAYMENT_CONFIRMATION. N re-shows slots.
+            self::S_AWAITING_SLOT_CONFIRM => [
+                'confirm' => [
+                    'next_step' => self::S_PROCESSING_PAYMENT, 'action' => 'process_payment',
+                    'response_template' => 'Perfect! Generating your payment link... 💳',
+                ],
+                'decline' => [
+                    'next_step' => self::S_CHECKING_SLOTS, 'action' => 'check_delivery_slots',
+                    'response_template' => 'No problem, let me show you the available times again.',
+                ],
+                '_default' => [
+                    'next_step' => self::S_AWAITING_SLOT_CONFIRM, 'action' => 'clarify',
+                    'response_template' => "Please reply:\n*Y* - confirm this slot and pay\n*N* - pick a different time",
+                ],
             ],
 
             self::S_AWAITING_PAYMENT_CONFIRMATION => [
