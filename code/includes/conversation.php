@@ -196,6 +196,14 @@ final class Conversation
             case 'book_delivery_slot':
                 return self::actBookSelectedSlot($text, $session, $stateData, $trans);
 
+            case 'check_custom_slot':
+                // Customer typed a date in S_AWAITING_SLOT_SELECTION. IntentDetector
+                // parsed it into $intent['extracted']['raw_date'] as ISO. We must
+                // (a) reject past dates and (b) show slots for that day. Before this
+                // case existed, the FSM sent the "checking…" template and parked the
+                // session at S_CHECKING_CUSTOM_SLOT forever — caught Karl on 2 Jun.
+                return self::actCheckCustomSlot($intent['extracted']['raw_date'] ?? '', $text, $stateData, $trans);
+
             case 'process_payment':
                 return self::actProcessPayment($phone, $session, $stateData, $trans);
 
@@ -295,7 +303,7 @@ final class Conversation
         $addr = CustomerRepo::defaultAddress($custId);
         if (!$addr) {
             $trans['next_step'] = StateMachine::S_AWAITING_NEW_ADDRESS;
-            return "I don't have a delivery address on file. What's your address?\n\nPlease include each on its own line:\n*Street + number*\n*Suburb*\n*City*\n*4-digit postal code*";
+            return "I don't have a delivery address on file. What's your address?\n\n*Example:*\n31 Example Rd, Strand, Cape Town, 7140\n\n(separate lines are also fine)";
         }
 
         $stateData['address_id'] = (int) $addr['id'];
@@ -468,7 +476,84 @@ final class Conversation
         }
         if ($cartSummary === '') $cartSummary = "• (no items)\n";
 
-        return "You've chosen:\n🗓 *{$label}*\n\n*Your order:*\n{$cartSummary}\n*Total: R {$total}*\n\n*Reply with:*\n*Y* - Confirm slot and pay\n*N* - Pick a different time";
+        // Karl flagged on 2 Jun: the final pre-pay readback hid the delivery address.
+        // Pull it in so the customer sees PERSON, ADDRESS, TIME, ORDER, AMOUNT all in
+        // one screen before the PayFast hand-off.
+        $addrBlock = '';
+        if (!empty($stateData['address_id'])) {
+            try {
+                $stmt = db()->prepare('SELECT line1, line2, city, postal_code FROM addresses WHERE id = :id LIMIT 1');
+                $stmt->execute([':id' => (int) $stateData['address_id']]);
+                $addr = $stmt->fetch();
+                if ($addr) {
+                    $parts = array_values(array_filter([
+                        trim((string) ($addr['line1'] ?? '')),
+                        trim((string) ($addr['line2'] ?? '')),
+                        trim((string) ($addr['city']  ?? '')),
+                        trim((string) ($addr['postal_code'] ?? '')),
+                    ], fn($v) => $v !== ''));
+                    if ($parts) $addrBlock = "*Delivery address:*\n📍 " . implode(', ', $parts) . "\n\n";
+                }
+            } catch (Throwable $e) {
+                // Non-fatal — readback degrades gracefully if lookup fails
+                log_to_file('whatsapp', 'slot_confirm address lookup failed', ['err' => $e->getMessage()]);
+            }
+        }
+
+        return "You've chosen:\n🗓 *{$label}*\n\n{$addrBlock}*Your order:*\n{$cartSummary}\n*Total: R {$total}*\n\n*Reply with:*\n*Y* - Confirm slot and pay\n*N* - Pick a different time";
+    }
+
+    /**
+     * Resolve a customer-typed date (already ISO from IntentDetector::parseRelativeOrDate)
+     * into a slot picker for that specific day. Reject past dates with a clear message
+     * instead of stalling. If no slots are seeded for that day, offer the next two open
+     * dates as an A/B fallback.
+     */
+    private static function actCheckCustomSlot(string $isoDate, string $rawText, array &$stateData, array &$trans): string
+    {
+        $iso = trim($isoDate);
+        if ($iso === '') {
+            // Should not happen — IntentDetector only routes here if a date parsed.
+            $trans['next_step'] = StateMachine::S_AWAITING_SLOT_SELECTION;
+            return "I didn't catch that date. Please reply *A* or *B*, or type a date like *28/05/2026*.";
+        }
+
+        // Reject past or today's dates (slots fulfilled day-of need to be seeded ahead).
+        $today = date('Y-m-d');
+        if ($iso < $today) {
+            $trans['next_step'] = StateMachine::S_AWAITING_SLOT_SELECTION;
+            // Re-show the A/B picker so the user can recover without typing the menu
+            return "That date is in the past. Please pick a future delivery day.\n\n" .
+                   self::actShowSlots($stateData, $trans);
+        }
+
+        try { SlotRepo::ensureNextNDays(14); } catch (Throwable $e) { /* non-fatal */ }
+
+        // Find every slot on that exact day
+        $wrapped = SlotRepo::availableSlots();
+        $matches = [];
+        foreach ($wrapped as $w) {
+            if (($w['slot']['delivery_date'] ?? '') === $iso) $matches[] = $w;
+        }
+
+        if (empty($matches)) {
+            $trans['next_step'] = StateMachine::S_AWAITING_SLOT_SELECTION;
+            return "No open slots on *{$iso}* right now. Here are the next available days:\n\n" .
+                   self::actShowSlots($stateData, $trans);
+        }
+
+        // Re-key as A/B/C... and stash slot_options so actBookSelectedSlot picks them up
+        $shown = array_slice($matches, 0, 2);
+        $stateData['slot_options'] = array_map(fn($w) => (int) ($w['slot']['id'] ?? 0), $shown);
+        $trans['next_step'] = StateMachine::S_AWAITING_SLOT_SELECTION;
+
+        $msg = "*Available on {$iso}:*\n\n";
+        $labels = ['A', 'B'];
+        foreach ($shown as $idx => $w) {
+            $msg .= "*{$labels[$idx]}* - " . ($w['display'] ?? '(slot)') . "\n";
+        }
+        $msg .= "\nOr type a different date.";
+        return $msg;
     }
 
     private static function actProcessPayment(string $phone, array $session, array &$stateData, array &$trans): string
@@ -600,10 +685,32 @@ final class Conversation
 
     private static function actCaptureNewAddress(string $text, string $phone, array &$stateData, array &$trans): string
     {
-        $lines = array_values(array_filter(array_map('trim', explode("\n", $text))));
+        // Karl flagged on 2 Jun: one prompt said "Street, Suburb, City, Postal code"
+        // (comma-ish) and the parser then demanded separate lines, contradicting each
+        // other. Accept BOTH shapes — try newlines first, fall back to commas.
+        $text = trim($text);
+        $lines = array_values(array_filter(array_map('trim', explode("\n", $text)), fn($v) => $v !== ''));
         if (count($lines) < 2) {
-            return "Please send your address on separate lines:\n\n31 Example Rd\nStrand\nCape Town\n7140";
+            $lines = array_values(array_filter(array_map('trim', explode(',', $text)), fn($v) => $v !== ''));
         }
+        if (count($lines) < 2) {
+            return "I need at least a street address and a postal code.\n\n*Either format works:*\n\n31 Example Rd, Strand, Cape Town, 7140\n\nor on separate lines:\n31 Example Rd\nStrand\nCape Town\n7140";
+        }
+
+        // Locate the 4-digit postal code wherever it appears (last numeric token wins).
+        // This lets the customer write '7140 Strand' or 'Cape Town 7140' without the
+        // strict order biting them.
+        $postalFromLines = null;
+        foreach ($lines as $i => $l) {
+            if (preg_match('/\b(\d{4})\b/', $l, $m)) {
+                $postalFromLines = $m[1];
+                // If the line is JUST the code, drop it; if it's mixed (e.g. "Cape Town 7140"),
+                // keep the rest of the line as part of the address.
+                $stripped = trim(preg_replace('/\b\d{4}\b/', '', $l));
+                $lines[$i] = $stripped;
+            }
+        }
+        $lines = array_values(array_filter($lines, fn($v) => $v !== ''));
 
         $custId = (int) ($stateData['customer_id'] ?? 0);
         if (!$custId) {
@@ -611,11 +718,10 @@ final class Conversation
             return "I lost track of who you are — let's start over.\n\n" . self::tplMenu();
         }
 
-        // Validate postal code BEFORE saving — same rule the web shop applies,
-        // so we don't accept addresses outside the delivery zone.
-        $postal = trim((string) ($lines[3] ?? ''));
+        // Postal code: use the one we extracted above, else fall back to a 4th line
+        $postal = $postalFromLines ?: trim((string) ($lines[3] ?? ''));
         if (!preg_match('/^\d{4}$/', $postal)) {
-            return "I need a 4-digit postal code on the last line.\n\n*Example:*\n31 Example Rd\nStrand\nCape Town\n7140";
+            return "I couldn't find a 4-digit postal code in your address.\n\n*Example:*\n31 Example Rd, Strand, Cape Town, 7140";
         }
         if (!CustomerRepo::postalCodeInZone($postal)) {
             return "Sorry, *{$postal}* is outside our delivery area. Please send a different address, or call 021 492 8515 to check.";

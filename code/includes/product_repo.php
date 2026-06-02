@@ -88,11 +88,17 @@ final class ProductRepo
     public static function letteredCatalogue(): array
     {
         $items = self::listActive();
-        // Sort by kg (parsed from name)
+        // Sort by kg (parsed from name), tie-break on the admin-controlled
+        // sort_order so "Swap" can appear before "+ Cyl" within each size band
+        // (alphabetical-by-name puts "+" before "S" and reverses the desired order).
         usort($items, function ($a, $b) {
             $ka = self::extractKg($a['name']);
             $kb = self::extractKg($b['name']);
-            return $ka === $kb ? strcmp($a['name'], $b['name']) : $ka <=> $kb;
+            if ($ka !== $kb) return $ka <=> $kb;
+            $sa = (int) ($a['sort_order'] ?? 0);
+            $sb = (int) ($b['sort_order'] ?? 0);
+            if ($sa !== $sb) return $sa <=> $sb;
+            return strcmp($a['name'], $b['name']);
         });
         $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
         $out = [];

@@ -202,7 +202,10 @@ final class StateMachine
                 'same_address'      => ['next_step' => self::S_CHECKING_SLOTS,      'action' => 'check_delivery_slots',
                                         'response_template' => 'Got it. Checking delivery times...'],
                 'different_address' => ['next_step' => self::S_AWAITING_NEW_ADDRESS,'action' => 'ask_for_address',
-                                        'response_template' => "What's your new delivery address?\n\nPlease include: Street, Suburb, City, Postal code\n"],
+                                        // Karl 2 Jun: this prompt and the parser's fallback used
+                                        // different formats and confused the user. Pick ONE example
+                                        // (comma-separated) and let the parser accept both shapes.
+                                        'response_template' => "What's your new delivery address?\n\n*Example:*\n31 Example Rd, Strand, Cape Town, 7140\n\n(separate lines are also fine)"],
                 '_default'          => ['next_step' => self::S_AWAITING_ADDRESS_CHOICE, 'action' => 'clarify',
                                         'response_template' => "Please reply with:\nS/Y - same address\nD/N - different address"],
             ],
