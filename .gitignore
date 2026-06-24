@@ -26,3 +26,6 @@ node_modules/
 
 # Temp test cookies (smoke-testing artefacts)
 /tmp/
+
+# Migration artifacts (real customer PII + dumps) — never commit
+.migration/
